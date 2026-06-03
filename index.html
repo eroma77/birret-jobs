@@ -8,16 +8,50 @@
   <!-- Supabase client SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- IMPORTANT: Initialize Supabase client IMMEDIATELY so it can parse
-       the #access_token hash from the OAuth redirect before any async code.
-       The anon key is public by design (safe to expose in frontend). -->
+  <!--
+    CRITICAL: Supabase client is created HERE — before ANY other JS — so the SDK
+    can synchronously detect the #access_token hash from the OAuth redirect.
+    The onAuthStateChange listener is also registered immediately so that
+    the SIGNED_IN event (which fires async but before DOMContentLoaded) is
+    captured in __BIRRET_AUTH_QUEUE and processed once app.js is ready.
+    The anon key is intentionally public — it's safe to include in the frontend.
+  -->
   <script>
-    window.__BIRRET_SUPABASE = supabase.createClient(
-      'https://mkgsoamugnnbqgwgvinb.supabase.co',
-      'sb_publishable_EdhPumusQGDfkvpYwbwAJw_-zXV20Tr'
-    );
-    console.log('[Birret] Supabase client created early. Hash:', window.location.hash.substring(0, 40) || '(none)');
+    (function () {
+      var SUPABASE_URL  = 'https://mkgsoamugnnbqgwgvinb.supabase.co';
+      var SUPABASE_ANON = 'sb_publishable_EdhPumusQGDfkvpYwbwAJw_-zXV20Tr';
+
+      try {
+        window.__BIRRET_SUPABASE = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
+          auth: {
+            detectSessionInUrl: true,
+            persistSession: true,
+            autoRefreshToken: true
+          }
+        });
+        console.log('[Birret] ✅ Supabase client ready. Hash:', window.location.hash.substring(0, 50) || '(none)');
+      } catch (e) {
+        console.error('[Birret] ❌ createClient failed:', e);
+        return;
+      }
+
+      // Queue to capture auth events that fire before app.js / DOMContentLoaded
+      window.__BIRRET_AUTH_QUEUE    = [];
+      window.__BIRRET_AUTH_HANDLER  = null; // will be set by initSupabaseAuth()
+
+      window.__BIRRET_SUPABASE.auth.onAuthStateChange(function (event, session) {
+        console.log('[Birret Early] auth event:', event, session ? session.user.email : 'no session');
+        if (typeof window.__BIRRET_AUTH_HANDLER === 'function') {
+          // app.js is already ready — call directly
+          window.__BIRRET_AUTH_HANDLER(event, session);
+        } else {
+          // app.js not ready yet — queue the event
+          window.__BIRRET_AUTH_QUEUE.push({ event: event, session: session });
+        }
+      });
+    })();
   </script>
+
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">

@@ -135,30 +135,51 @@ document.addEventListener("DOMContentLoaded", () => {
   function initSupabaseAuth() {
     if (!supabaseClient) return;
 
-    // 1. On page load — check for existing session OR OAuth redirect token in URL hash
-    supabaseClient.auth.getSession().then(({ data: { session }, error }) => {
-      if (error) console.error("getSession error:", error);
-      console.log("[Auth] getSession result:", session ? "session found" : "no session");
-      handleAuthSession(session, null);
-    });
-
-    // 2. Listen to ALL auth state changes (login, logout, token refresh, OAuth redirect)
-    supabaseClient.auth.onAuthStateChange((event, session) => {
-      console.log("[Auth] onAuthStateChange event:", event, "| user:", session?.user?.email || "none");
+    // Register the auth handler so future onAuthStateChange events call it directly
+    window.__BIRRET_AUTH_HANDLER = function (event, session) {
+      console.log("[Auth] Handling event:", event, "| user:", session?.user?.email || "none");
       handleAuthSession(session, event);
 
-      // Clean up the #access_token hash from the address bar after OAuth redirect
+      // Remove the #access_token hash from the address bar
       if (event === "SIGNED_IN" && window.location.hash.includes("access_token")) {
         window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
-        console.log("[Auth] URL hash cleared after OAuth sign-in.");
+        console.log("[Auth] ✅ URL hash cleared.");
+      }
+    };
+
+    // Drain any auth events that fired BEFORE app.js was ready (queued in <head>)
+    const queue = window.__BIRRET_AUTH_QUEUE || [];
+    if (queue.length > 0) {
+      console.log("[Auth] Draining", queue.length, "queued auth event(s) from early listener.");
+      queue.forEach(function ({ event, session }) {
+        window.__BIRRET_AUTH_HANDLER(event, session);
+      });
+      window.__BIRRET_AUTH_QUEUE = [];
+    }
+
+    // Fallback: explicitly call getSession() in case the hash was processed
+    // before onAuthStateChange was set up and no events were queued
+    supabaseClient.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        console.error("[Auth] getSession error:", error);
+        return;
+      }
+      console.log("[Auth] getSession fallback:", session ? "✅ session found → " + session.user.email : "❌ no session");
+      if (session && !state.user) {
+        // Session exists but we haven't processed it yet — handle it now
+        handleAuthSession(session, "INITIAL_SESSION");
+        if (window.location.hash.includes("access_token")) {
+          window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+        }
       }
     });
   }
 
 
+
   function handleAuthSession(session, event) {
     if (session && session.user) {
-      const u = session.user;
+      const u    = session.user;
       const meta = u.user_metadata || {};
 
       // Prefer Google display name; fall back to email prefix
@@ -173,8 +194,9 @@ document.addEventListener("DOMContentLoaded", () => {
         avatarUrl: avatarUrl
       };
 
-      // On successful OAuth redirect — close auth modal and show success toast
-      if (event === "SIGNED_IN") {
+      // Close modal & show welcome on any sign-in event (including our INITIAL_SESSION fallback)
+      const isNewLogin = (event === "SIGNED_IN" || event === "INITIAL_SESSION");
+      if (isNewLogin) {
         const modal = document.getElementById("authModal");
         if (modal) modal.classList.remove("active");
 
@@ -198,6 +220,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     updateAuthUI();
   }
+
 
   // --- GOOGLE OAUTH AUTHENTICATION ---
   async function handleGoogleSignIn() {
