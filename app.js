@@ -135,32 +135,63 @@ document.addEventListener("DOMContentLoaded", () => {
     updateAuthUI();
   }
 
-  // --- REAL SUPABASE AUTHENTICATION ---
+  // --- SUPABASE AUTH INITIALIZATION ---
   function initSupabaseAuth() {
     if (!supabaseClient) return;
 
-    // Fetch initial user session
-    supabaseClient.auth.getSession().then(({ data: { session } }) => {
-      handleAuthSession(session);
+    // 1. On page load — check for existing session OR OAuth redirect token in URL hash
+    supabaseClient.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) console.error("getSession error:", error);
+      handleAuthSession(session, null);
     });
 
-    // Listen to session changes
+    // 2. Listen to ALL auth state changes (login, logout, token refresh, OAuth redirect)
     supabaseClient.auth.onAuthStateChange((event, session) => {
-      handleAuthSession(session);
+      console.log("[Auth] event:", event, session?.user?.email);
+      handleAuthSession(session, event);
     });
   }
 
-  function handleAuthSession(session) {
-    if (session) {
+  function handleAuthSession(session, event) {
+    if (session && session.user) {
+      const u = session.user;
+      const meta = u.user_metadata || {};
+
+      // Prefer Google display name; fall back to email prefix
+      const displayName = meta.full_name || meta.name || u.email.split('@')[0];
+      const avatarUrl   = meta.avatar_url || meta.picture || null;
+
       state.user = {
-        id: session.user.id,
-        email: session.user.email,
-        name: session.user.email.split('@')[0],
-        avatar: session.user.email.charAt(0).toUpperCase()
+        id:        u.id,
+        email:     u.email,
+        name:      displayName,
+        avatar:    displayName.charAt(0).toUpperCase(),
+        avatarUrl: avatarUrl
       };
+
+      // On successful OAuth redirect — close auth modal and show success toast
+      if (event === "SIGNED_IN") {
+        const modal = document.getElementById("authModal");
+        if (modal) modal.classList.remove("active");
+
+        showToast(
+          window.currentLanguage === "kk"
+            ? `Сәлем, ${displayName}! Жүйеге сәтті кірдіңіз.`
+            : `Добро пожаловать, ${displayName}!`,
+          "success"
+        );
+
+        // Execute any pending action that required auth
+        if (state.authRedirect) {
+          const redirect = state.authRedirect;
+          state.authRedirect = null;
+          setTimeout(() => executeRedirectAction(redirect), 300);
+        }
+      }
     } else {
       state.user = null;
     }
+
     updateAuthUI();
   }
 
@@ -237,7 +268,17 @@ document.addEventListener("DOMContentLoaded", () => {
       
       document.getElementById("profileName").textContent = state.user.name;
       document.getElementById("profileEmail").textContent = state.user.email;
-      document.getElementById("profileAvatar").textContent = state.user.name.charAt(0).toUpperCase();
+
+      // Show Google profile photo if available, otherwise show initial letter
+      const avatarEl = document.getElementById("profileAvatar");
+      if (state.user.avatarUrl) {
+        avatarEl.innerHTML = `<img src="${state.user.avatarUrl}" alt="avatar"
+          style="width:100%;height:100%;border-radius:50%;object-fit:cover;display:block;">`;
+        avatarEl.textContent = "";
+      } else {
+        avatarEl.innerHTML = "";
+        avatarEl.textContent = state.user.avatar;
+      }
       
       renderMyJobs();
     } else {
@@ -245,6 +286,7 @@ document.addEventListener("DOMContentLoaded", () => {
       authState.style.display = "none";
     }
   }
+
 
   // --- DATABASE SERVER HELPERS ---
   async function loadJobsFromServer() {
