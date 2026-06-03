@@ -8,22 +8,42 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Initialize Supabase Client for token verification
-const supabase = createClient(
-  process.env.SUPABASE_URL || "https://mkgsoamugnnbqgwgvinb.supabase.co",
-  process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1rZ3NvYW11Z25uYnFnd2d2aW5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyNjU0MDAsImV4cCI6MjA5NTg0MTQwMH0.S5u7V_UiPVYJzkE3bF7vXz4WjXLcs2S8ntSiq5r4woA"
-);
+const supabaseUrl = process.env.SUPABASE_URL || "https://mkgsoamugnnbqgwgvinb.supabase.co";
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1rZ3NvYW11Z25uYnFnd2d2aW5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyNjU0MDAsImV4cCI6MjA5NTg0MTQwMH0.S5u7V_UiPVYJzkE3bF7vXz4WjXLcs2S8ntSiq5r4woA";
+
+console.log("[Supabase Auth Init] Target URL:", supabaseUrl);
+console.log("[Supabase Auth Init] Key Prefix:", supabaseAnonKey.substring(0, 20) + "...");
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Helper function to extract user from Authorization header
 async function getUserFromRequest(req) {
   try {
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+    if (!authHeader) {
+      console.warn("[Auth Warning] Missing Authorization header");
+      return null;
+    }
+    if (!authHeader.startsWith('Bearer ')) {
+      console.warn("[Auth Warning] Authorization header does not start with Bearer");
+      return null;
+    }
     
     const token = authHeader.split(' ')[1];
-    if (!token) return null;
+    if (!token) {
+      console.warn("[Auth Warning] Token is empty");
+      return null;
+    }
     
     const { data: { user }, error } = await supabase.auth.getUser(token);
-    if (error || !user) return null;
+    if (error) {
+      console.error("[Auth Error] getUser failed:", error.message, "Status:", error.status);
+      return null;
+    }
+    if (!user) {
+      console.error("[Auth Error] getUser returned null user");
+      return null;
+    }
     
     return user;
   } catch (err) {
@@ -104,8 +124,8 @@ const mapRowToJob = (row) => ({
 // 0. GET CONFIGURATION FOR CLIENT-SIDE SDK
 app.get('/api/config', (req, res) => {
   res.json({
-    supabaseUrl: process.env.SUPABASE_URL || "https://mkgsoamugnnbqgwgvinb.supabase.co",
-    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1rZ3NvYW11Z25uYnFnd2d2aW5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyNjU0MDAsImV4cCI6MjA5NTg0MTQwMH0.S5u7V_UiPVYJzkE3bF7vXz4WjXLcs2S8ntSiq5r4woA"
+    supabaseUrl: supabaseUrl,
+    supabaseAnonKey: supabaseAnonKey
   });
 });
 
