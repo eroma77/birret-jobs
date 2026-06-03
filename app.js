@@ -441,6 +441,7 @@ document.addEventListener("DOMContentLoaded", () => {
       placeholder: "Выберите профессию",
       onSelect: (value) => {
         state.formState.profession = value;
+        state.isDirty = true;
         validateField("profession");
         checkFormValidity();
       },
@@ -457,6 +458,7 @@ document.addEventListener("DOMContentLoaded", () => {
       placeholder: "Выберите город",
       onSelect: (value) => {
         state.formState.city = value;
+        state.isDirty = true;
         validateField("city");
         checkFormValidity();
       },
@@ -607,6 +609,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         option.addEventListener("click", () => {
           state.formState.ageFrom = age;
+          state.isDirty = true;
           fromText.textContent = window.currentLanguage === "kk" ? `Бастап ${age}` : `От ${age}`;
           fromText.classList.add("has-value");
           fromMenu.classList.remove("show");
@@ -636,6 +639,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         option.addEventListener("click", () => {
           state.formState.ageTo = age;
+          state.isDirty = true;
           toText.textContent = window.currentLanguage === "kk" ? `Дейін ${age}` : `До ${age}`;
           toText.classList.add("has-value");
           toMenu.classList.remove("show");
@@ -918,6 +922,17 @@ document.addEventListener("DOMContentLoaded", () => {
       e.target.value = formatted;
       validateField("phone");
       checkFormValidity();
+    });
+
+    const genderRadios = document.getElementsByName("requiredGender");
+    genderRadios.forEach(radio => {
+      radio.addEventListener("change", (e) => {
+        if (e.target.checked) {
+          state.formState.gender = e.target.value;
+          state.isDirty = true;
+          checkFormValidity();
+        }
+      });
     });
 
     window.addEventListener("beforeunload", (e) => {

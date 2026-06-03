@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 3000;
 // Initialize Supabase Client for token verification
 const supabase = createClient(
   process.env.SUPABASE_URL || "https://mkgsoamugnnbqgwgvinb.supabase.co",
-  process.env.SUPABASE_ANON_KEY || ""
+  process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1rZ3NvYW11Z25uYnFnd2d2aW5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyNjU0MDAsImV4cCI6MjA5NTg0MTQwMH0.S5u7V_UiPVYJzkE3bF7vXz4WjXLcs2S8ntSiq5r4woA"
 );
 
 // Helper function to extract user from Authorization header
@@ -105,7 +105,7 @@ const mapRowToJob = (row) => ({
 app.get('/api/config', (req, res) => {
   res.json({
     supabaseUrl: process.env.SUPABASE_URL || "https://mkgsoamugnnbqgwgvinb.supabase.co",
-    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || ""
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1rZ3NvYW11Z25uYnFnd2d2aW5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyNjU0MDAsImV4cCI6MjA5NTg0MTQwMH0.S5u7V_UiPVYJzkE3bF7vXz4WjXLcs2S8ntSiq5r4woA"
   });
 });
 
