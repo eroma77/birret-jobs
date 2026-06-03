@@ -1,31 +1,73 @@
-window.TRANSLATIONS = {
-  ru: {
+// ---------------------------------------------------------------------------
+// CENTRALIZED CONFIGURATION — infrastructure constants that are NOT translations
+// ---------------------------------------------------------------------------
+window.SUPPORT_WHATSAPP_URL = "https://wa.me/77754737619";
+
+// ---------------------------------------------------------------------------
+// TRANSLATIONS — single source of truth for all UI strings.
+// Language is fixed to Russian (ru). Kazakh alphabet characters (әіңғүұқөһ)
+// remain fully supported in USER INPUT (addresses, descriptions) via regexes —
+// this file only removes the kk UI translation layer.
+//
+// Object is deep-frozen to prevent runtime mutation from third-party scripts.
+// ---------------------------------------------------------------------------
+window.TRANSLATIONS = Object.freeze({
+  ru: Object.freeze({
+    // ── Navigation / General ──────────────────────────────────────────────
     filterBtn: "Фильтр",
     feedTitle: "Вакансии",
+
+    // ── Offline / Config banners ───────────────────────────────────────────
+    offlineBannerText: "Соединение с интернетом потеряно. Ваши данные сохранены, попробуйте отправить позже",
+    configErrorBannerText: "Не удалось загрузить конфигурацию приложения. Пожалуйста, проверьте интернет-соединение и перезагрузите страницу.",
+
+    // ── Favorites view ────────────────────────────────────────────────────
     favTitle: "Избранные вакансии",
     favSubtitle: "Список сохраненных вами вакансий",
     favEmptyTitle: "Список избранного пуст",
     favEmptyDesc: "Нажмите на иконку сердечка на карточке вакансии, чтобы сохранить её здесь.",
+
+    // ── Cabinet / Auth ────────────────────────────────────────────────────
     guestCabinetTitle: "Войдите в личный кабинет",
     guestCabinetDesc: "Зарегистрируйтесь, чтобы размещать новые объявления и управлять своими публикациями.",
+    btnCabinetAuth: "Войти / Зарегистрироваться",
     btnGoogleAuth: "Войти через Google",
-    authModalSecurity: "Безопасный вход. Мы не храним ваш пароль.",
-    labelEmail: "Электронная почта (Email)",
-    labelPassword: "Пароль",
-    btnSignIn: "Войти",
-    btnSignUp: "Зарегистрироваться",
-    btnSwitchToSignUp: "Нет аккаунта? Зарегистрироваться",
-    btnSwitchToSignIn: "Уже есть аккаунт? Войти",
     profileTitle: "Кабинет",
     profileLogout: "Выйти",
     btnContactAuthor: "Связаться с автором",
     btnOpenForm: "Опубликовать вакансию",
     myJobsTitle: "Мои опубликованные вакансии",
+    myJobsEmpty: "Вы еще не опубликовали ни одной вакансии.",
+    btnEditAction: "Изменить",
+    btnDeleteAction: "Удалить",
+
+    // ── Auth modal ────────────────────────────────────────────────────────
+    authModalTitle: "Требуется авторизация",
+    authModalDesc: "Войдите через Google. Это абсолютно бесплатно и безопасно.",
+    authModalFavDesc: "Войдите в систему, чтобы добавлять вакансии в список избранного.",
+    authModalDetailsDesc: "Войдите в систему, чтобы смотреть детали вакансии и связываться с работодателями.",
+    authModalFormDesc: "Войдите в систему, чтобы размещать новые объявления.",
+    toastWelcome: "Добро пожаловать, {name}!",
+
+    // ── Server error code → localized message ────────────────────────────
+    serverErrorDefault: "Ошибка сервера. Попробуйте ещё раз.",
+    serverErrorAuthRequired: "Сессия устарела или недействительна. Пожалуйста, войдите снова.",
+    serverErrorForbidden: "У вас нет прав на это действие.",
+    serverErrorNotFound: "Вакансия не найдена.",
+    serverErrorInvalidProfession: "Некорректное название профессии.",
+    serverErrorInvalidGender: "Некорректный пол.",
+    serverErrorInvalidAgeRange: "Возраст должен быть от 15 до 50 лет.",
+    serverErrorInvalidDescriptionLength: "Описание должно быть от 20 до 1000 символов.",
+    serverErrorDescriptionContainsUrl: "Описание не должно содержать внешних ссылок.",
+    serverErrorInvalidCity: "Необходимо указать город.",
+    serverErrorInvalidAddress: "Адрес должен быть от 5 до 255 символов.",
+    serverErrorInvalidPayment: "Оплата должна быть от 1 000 ₸ до 5 000 000 ₸.",
+    serverErrorInvalidPhone: "Некорректный номер телефона (должно быть 10 цифр).",
+
+    // ── Form ──────────────────────────────────────────────────────────────
     formTitleCreate: "Публикация новой вакансии",
     formTitleEdit: "Редактирование вакансии",
     formSubtitle: "Все поля, помеченные звездочкой, обязательны для заполнения",
-    
-    // Form fields
     labelProfession: "Профессия",
     placeholderProfession: "Выберите профессию",
     errorProfession: "Необходимо выбрать профессию.",
@@ -36,8 +78,13 @@ window.TRANSLATIONS = {
     labelAge: "Диапазон возраста",
     ageFrom: "От",
     ageTo: "До",
+    ageFromLabel: "От",
+    ageToLabel: "До",
+    ageFromPrefix: "От ",
+    ageToPrefix: "До ",
     errorAge: "Возрастной диапазон должен быть указан верно.",
     labelDescription: "Описание работы",
+    descSymbolText: "символов",
     placeholderDescription: "Опишите требования к исполнителю, график, задачи и условия работы...",
     errorDescription: "Напишите не менее 20 символов и не используйте внешние ссылки.",
     labelCity: "Город",
@@ -57,10 +104,17 @@ window.TRANSLATIONS = {
     btnCancel: "Отмена",
     previewTitle: "Предварительный просмотр",
     btnPublish: "Опубликовать",
+    btnPublishing: "Публикация...",
     btnEdit: "Редактировать",
     btnCheckWa: "Проверить WhatsApp",
-    
-    // Filters Drawer
+
+    // ── Search inputs ─────────────────────────────────────────────────────
+    placeholderSearch: "Поиск...",
+    placeholderFormProfessionSearch: "Введите профессию...",
+    placeholderFormCitySearch: "Введите город...",
+    placeholderFilterExcludeSearch: "Поиск для исключения...",
+
+    // ── Filters drawer ────────────────────────────────────────────────────
     filterTitle: "Фильтры",
     sortLabel: "Сортировка",
     sortNewest: "Сначала новые",
@@ -77,16 +131,18 @@ window.TRANSLATIONS = {
     filterAgePlaceholder: "Например: 25",
     filterAgeDesc: "Показывает только вакансии, которые подходят под ваш возраст",
     filterRemoteLabel: "Только удаленная работа",
+    filterGenderLabel: "Пол соискателя",
+    filterGenderAll: "Все",
+    filterGenderMale: "Мужчина",
+    filterGenderFemale: "Женщина",
     btnApply: "Применить",
     btnReset: "Сбросить",
-    
-    authModalTitle: "Требуется авторизация",
-    authModalDesc: "Войдите с помощью вашей почты и пароля. Это абсолютно бесплатно и безопасно.",
-    authModalFavDesc: "Войдите в систему, чтобы добавлять вакансии в список избранного.",
-    authModalDetailsDesc: "Войдите в систему, чтобы смотреть детали вакансии и связываться с работодателями.",
-    authModalFormDesc: "Войдите в систему, чтобы размещать новые объявления.",
-    
-    // Details Modal
+    selectedCount: "Выбрано: ",
+    excludeModePlaceholder: "Какие вакансии скрыть",
+    multiSelectPlaceholder: "Выбрать несколько",
+    nothingFound: "Ничего не найдено",
+
+    // ── Details modal ─────────────────────────────────────────────────────
     detailsOnPlace: "На месте",
     detailsPublished: "Опубликовано",
     detailsCriteria: "Требуемый пол",
@@ -94,12 +150,29 @@ window.TRANSLATIONS = {
     detailsCriteriaYears: "лет",
     detailsCriteriaYearsTo: "до",
     btnContactWa: "Связаться по WhatsApp",
-    
-    // Empty feed
+
+    // ── Vacancy card dynamic labels ───────────────────────────────────────
+    today: "Сегодня",
+    yesterday: "Вчера",
+    negotiablePrice: "Договорная",
+    remoteJob: "Удаленно",
+    cardBadgeAge: "Возраст",
+    cardBadgeAgeUnit: "лет",
+    cardBadgeGender: "Пол",
+    cardRemoteWorkLabel: "Удаленная работа",
+
+    // ── Filter tag prefixes ───────────────────────────────────────────────
+    tagPrefixExclude: "Скрыть: ",
+    tagPrefixAge: "Возраст: ",
+
+    // ── Dark mode ─────────────────────────────────────────────────────────
+    darkModeToggleTitle: "Переключить тему",
+
+    // ── Empty feed ────────────────────────────────────────────────────────
     emptyFeedTitle: "Вакансии не найдены",
     emptyFeedDesc: "Попробуйте изменить или сбросить настройки фильтра.",
-    
-    // Toasts
+
+    // ── Toast notifications ───────────────────────────────────────────────
     toastSessionRefresh: "Обновление сессии...",
     toastLoginSuccess: "Вы успешно вошли в систему!",
     toastLogoutSuccess: "Вы вышли из системы.",
@@ -116,144 +189,12 @@ window.TRANSLATIONS = {
     toastDeleteConfirm: "Вы действительно хотите удалить это объявление? Это действие нельзя отменить.",
     toastCancelConfirm: "Введенные данные не будут сохранены. Вы действительно хотите отменить?",
     toastRollbackFav: "Не удалось синхронизировать список избранного с сервером.",
-    myJobsEmpty: "Вы еще не опубликовали ни одной вакансии.",
     toastAuthServerConnectError: "Ошибка подключения к серверу авторизации.",
+    toastServerUnavailable: "Сервер недоступен. Попробуйте позже.",
+    toastDbError: "Ошибка подключения к БД. Загружены локальные данные.",
     toastPublishError: "Ошибка при публикации на сервере.",
     toastDeleteError: "Не удалось удалить вакансию. Попробуйте снова.",
-    
-    // Date formats
-    today: "Сегодня",
-    yesterday: "Вчера",
-    negotiablePrice: "Договорная",
-    remoteJob: "Удаленно"
-  },
-  
-  kk: {
-    filterBtn: "Сүзгі",
-    feedTitle: "Вакансиялар",
-    favTitle: "Таңдаулы жұмыстар",
-    favSubtitle: "Сізге ұнаған және сақтап қойған жұмыстарыңыздың тізімі",
-    favEmptyTitle: "Таңдаулылар тізімі бос",
-    favEmptyDesc: "Жұмысты осы жерге сақтау үшін жұмыс карточкасындағы жүрекше белгішесін басыңыз.",
-    guestCabinetTitle: "Жеке кабинетке кіріңіз",
-    guestCabinetDesc: "Жұмыс жариялау және жарияланған жұмыстарыңызды басқару үшін жүйеге тіркеліңіз.",
-    btnGoogleAuth: "Google аккаунтымен кіру",
-    authModalSecurity: "Қауіпсіз кіру. Парольды сақтамаймыз.",
-    labelEmail: "Электрондық пошта (Email)",
-    labelPassword: "Құпия сөз",
-    btnSignIn: "Кіру",
-    btnSignUp: "Тіркелу",
-    btnSwitchToSignUp: "Тіркелмегенсіз бе? Тіркелу",
-    btnSwitchToSignIn: "Аккаунтыңыз бар ма? Кіру",
-    profileTitle: "Кабинет",
-    profileLogout: "Шығу",
-    btnContactAuthor: "Автормен байланысу",
-    btnOpenForm: "Жаңа вакансия жариялау",
-    myJobsTitle: "Менің жариялаған жұмыстарым",
-    formTitleCreate: "Жаңа жұмыс жариялау",
-    formTitleEdit: "Жұмысты өңдеу",
-    formSubtitle: "Барлық жұлдызшамен белгіленген өрістерді толтыру қажет",
-    
-    // Form fields
-    labelProfession: "Мамандық",
-    placeholderProfession: "Мамандықты таңдаңыз",
-    errorProfession: "Мамандықты таңдау міндетті.",
-    labelGender: "Қажетті жыныс",
-    genderMale: "Ер",
-    genderFemale: "Әйел",
-    genderAny: "Маңызды емес",
-    labelAge: "Жас аралығы",
-    ageFrom: "Бастап",
-    ageTo: "Дейін",
-    errorAge: "Жас аралығы дұрыс таңдалуы керек.",
-    labelDescription: "Жұмыс сипаттамасы",
-    placeholderDescription: "Жұмыс туралы толық мәлімет жазыңыз (талаптар, мерзімі, міндеттері...)",
-    errorDescription: "Кем дегенде 20 символ жазыңыз және сілтемелер салмаңыз.",
-    labelCity: "Қала",
-    placeholderCity: "Қаланы таңдаңыз",
-    errorCity: "Қаланы таңдау міндетті.",
-    labelAddress: "Мекенжай",
-    labelRemote: "Қашықтан",
-    placeholderAddress: "Мысалы: Жетісу-2 ауд., 45-үй",
-    errorAddress: "Мекенжай 5 пен 50 символ аралығында, тек мәтін, сандар және нүкте, үтір болуы тиіс.",
-    labelPayment: "Төлемі (₸)",
-    labelNegotiable: "Келісімді",
-    placeholderPayment: "Мысалы: 150 000",
-    errorPayment: "Сома 1 000 ₸ мен 5 000 000 ₸ арасында болуы керек.",
-    labelPhone: "Байланыс WhatsApp нөмірі",
-    errorPhone: "Телефон нөмірін толық енгізіңіз (10 сан).",
-    btnPreview: "Алдын ала көру",
-    btnCancel: "Бас тарту",
-    previewTitle: "Алдын ала қарау",
-    btnPublish: "Жариялау",
-    btnEdit: "Өңдеу",
-    btnCheckWa: "WhatsApp-ты тексеру",
-    
-    // Filters Drawer
-    filterTitle: "Сүзгілер",
-    sortLabel: "Сұрыптау",
-    sortNewest: "Ең жаңалары бойынша",
-    sortOldest: "Ең ескілері бойынша",
-    sortHighestPayment: "Төлемі жоғары жұмыстар",
-    sortAlphabetical: "Алфавит бойынша (Ә-Я)",
-    filterProfessionLabel: "Мамандық бойынша іздеу",
-    filterProfessionPlaceholder: "Мамандықты жазыңыз...",
-    filterCityLabel: "Қала бойынша іздеу",
-    filterCityPlaceholder: "Қаланы жазыңыз...",
-    filterExcludeLabel: "Мамандықтарды алып тастау",
-    filterExcludePlaceholder: "Алып тастау үшін іздеу...",
-    filterAgeLabel: "Сіздің жасыңыз",
-    filterAgePlaceholder: "Мысалы: 25",
-    filterAgeDesc: "Сіздің жасыңыздағы жұмыс берушілердің талаптарына сай вакансияларды ғана көрсетеді",
-    filterRemoteLabel: "Тек қашықтан жұмыс",
-    btnApply: "Қолдану",
-    btnReset: "Тазалау",
-    
-    authModalTitle: "Тіркелу қажет",
-    authModalDesc: "Поштаңыз бен құпия сөзіңізді енгізіп кіріңіз. Бұл мүлдем тегін және қауіпсіз.",
-    authModalFavDesc: "Жұмыстарды таңдаулыларға қосу үшін тіркелуіңіз қажет.",
-    authModalDetailsDesc: "Жұмыстың толық мәліметтерін көру және хабарласу үшін тіркелуіңіз қажет.",
-    authModalFormDesc: "Жаңа вакансия жариялау үшін алдымен жүйеге кіріңіз.",
-    
-    // Details Modal
-    detailsOnPlace: "Жұмыс орнында",
-    detailsPublished: "Жарияланған уақыты",
-    detailsCriteria: "Қажетті жыныс",
-    detailsCriteriaAge: "Жасы",
-    detailsCriteriaYears: "жас",
-    detailsCriteriaYearsTo: "дейін",
-    btnContactWa: "WhatsApp арқылы хабарласу",
-    
-    // Empty feed
-    emptyFeedTitle: "Бос жұмыс орындары табылмады",
-    emptyFeedDesc: "Сүзгі параметрлерін өзгертіп немесе нөлдеп көріңіз.",
-    
-    // Toasts
-    toastSessionRefresh: "Сессия жаңартылуда...",
-    toastLoginSuccess: "Жүйеге сәтті кірдіңіз!",
-    toastLogoutSuccess: "Жүйеден шықтыңыз.",
-    toastJobDeleted: "Жұмыс өшірілді.",
-    toastFiltersReset: "Сүзгілер тазаланды.",
-    toastFormErrors: "Форманы толтыруда қателер бар!",
-    toastOffline: "Интернет байланысы жоқ! Әрекет мүмкін емес.",
-    toastJobUpdated: "Хабарландыру сәтті жаңартылды!",
-    toastJobCreated: "Жұмыс сәтті жарияланды!",
-    toastConnectionRestored: "Интернет желісі қалпына келді!",
-    toastConnectionLost: "Интернет байланысы үзілді!",
-    toastPhoneError: "Қате телефон нөмірі! WhatsApp-қа өту мүмкін емес.",
-    toastWhatsAppContextLost: "Интернет желісі үзілген! WhatsApp-қа өту мүмкін емес.",
-    toastDeleteConfirm: "Бұл хабарландыруды өшіргіңіз келе ме? Бұл әрекетті артқа қайтару мүмкін емес.",
-    toastCancelConfirm: "Енгізілген мәліметтер сақталмайды. Шынымен бас тартасыз ба?",
-    toastRollbackFav: "Сервермен байланыс үзілді. Таңдаулылар тізімі жаңартылмады.",
-    myJobsEmpty: "Сіз әлі ешқандай бос жұмыс орнын жарияламадыңыз.",
-    toastAuthServerConnectError: "Авторизация серверіне қосылу қатесі.",
-    toastPublishError: "Серверде жариялау қатесі.",
-    toastDeleteError: "Вакансияны өшіру мүмкін болмады. Қайталап көріңіз.",
-    
-    // Date formats
-    today: "Бүгін",
-    yesterday: "Кеше",
-    negotiablePrice: "Келісімді",
-    remoteJob: "Қашықтан"
-  }
-};
+    toastGoogleAuthError: "Ошибка входа через Google: ",
+    toastConfigError: "Ошибка подключения к серверу. Пожалуйста, перезагрузите страницу.",
+  })
+});

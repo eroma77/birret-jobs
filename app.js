@@ -17,13 +17,14 @@ document.addEventListener("DOMContentLoaded", () => {
       cities: [],
       excludeProfessions: [],
       age: null,
-      remoteOnly: false
+      remoteOnly: false,
+      gender: "all"
     },
     formState: {
       profession: "",
-      gender: "Неважно",
-      ageFrom: 15,
-      ageTo: 50,
+      gender: "any",
+      ageFrom: 18,
+      ageTo: 30,
       description: "",
       city: "",
       address: "",
@@ -38,29 +39,90 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   let supabaseClient = null;
+  const multiSelectSyncRegistry = {};
+
+  // ---------------------------------------------------------------------------
+  // i18n SHORTHAND — always reads the active language at call time
+  // Usage: t("keyName")  — never cache the result across language switches
+  // ---------------------------------------------------------------------------
+  function t(key) {
+    const dict = window.TRANSLATIONS && window.TRANSLATIONS[window.currentLanguage];
+    if (!dict) return key; // Graceful degradation: return key name instead of crashing
+    const value = dict[key];
+    if (value === undefined) {
+      console.warn(`[i18n] Missing translation key: "${key}" for lang="${window.currentLanguage}"`);
+      return key;
+    }
+    return value;
+  }
+
+  // ---------------------------------------------------------------------------
+  // SERVER ERROR CODE → LOCALIZED TOAST
+  // Maps machine-readable `code` from server.js error responses to
+  // the active locale's human-readable string in translations.js.
+  // Falls back to null so the caller can use the raw server message.
+  // ---------------------------------------------------------------------------
+  function serverCodeToast(code) {
+    const codeMap = {
+      AUTH_REQUIRED:               "serverErrorAuthRequired",
+      FORBIDDEN:                   "serverErrorForbidden",
+      NOT_FOUND:                   "serverErrorNotFound",
+      INVALID_PROFESSION:          "serverErrorInvalidProfession",
+      INVALID_GENDER:              "serverErrorInvalidGender",
+      INVALID_AGE_RANGE:           "serverErrorInvalidAgeRange",
+      INVALID_DESCRIPTION_LENGTH:  "serverErrorInvalidDescriptionLength",
+      DESCRIPTION_CONTAINS_URL:    "serverErrorDescriptionContainsUrl",
+      INVALID_CITY:                "serverErrorInvalidCity",
+      INVALID_ADDRESS:             "serverErrorInvalidAddress",
+      INVALID_PAYMENT:             "serverErrorInvalidPayment",
+      INVALID_PHONE:               "serverErrorInvalidPhone",
+    };
+    const translationKey = codeMap[code];
+    return translationKey ? t(translationKey) : null;
+  }
 
   // --- INITIALIZATION ---
   async function init() {
-    // Set initial language from storage or default to Russian
-    window.currentLanguage = localStorage.getItem("birret_lang") || "ru";
+    // Set initial language fixed to Russian (Cyrillic Kazakh still valid in regex validation)
+    window.currentLanguage = "ru";
 
-    // 1. Use the Supabase client that was created synchronously in <head>
-    //    This is critical: the client MUST exist before getSession() is called
-    //    so it can parse the #access_token hash from OAuth redirect.
-    if (window.__BIRRET_SUPABASE) {
-      supabaseClient = window.__BIRRET_SUPABASE;
-      console.log("[Birret] Using pre-initialized Supabase client.");
-      initSupabaseAuth();
+    // Apply saved theme (Dark Mode)
+    const savedTheme = localStorage.getItem("birret_theme") || "light";
+    if (savedTheme === "dark") {
+      document.documentElement.setAttribute("data-theme", "dark");
+      const sun = document.getElementById("iconSun");
+      const moon = document.getElementById("iconMoon");
+      if (sun) sun.classList.remove("hidden");
+      if (moon) moon.classList.add("hidden");
+    }
+
+    // Wait for Supabase config fetch to finish (resolving race condition)
+    if (window.__BIRRET_CONFIG_PROMISE) {
+      try {
+        supabaseClient = await window.__BIRRET_CONFIG_PROMISE;
+        console.log("[Birret] Supabase client initialized via early config promise.");
+        initSupabaseAuth();
+      } catch (err) {
+        console.error("Failed to initialize Supabase via promise:", err);
+        showConfigErrorState();
+      }
     } else {
       // Fallback: try fetching config from server (old path)
       try {
         const configRes = await fetch("/api/config");
         const config = await configRes.json();
-        supabaseClient = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+        supabaseClient = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
+          auth: {
+            detectSessionInUrl: true,
+            persistSession: true,
+            autoRefreshToken: true
+          }
+        });
+        console.log("[Birret] Supabase client initialized via fallback config fetch.");
         initSupabaseAuth();
       } catch (err) {
         console.error("Failed to initialize Supabase:", err);
-        showToast(window.TRANSLATIONS[window.currentLanguage].toastAuthServerConnectError, "error");
+        showConfigErrorState();
       }
     }
 
@@ -72,6 +134,34 @@ document.addEventListener("DOMContentLoaded", () => {
     applyLanguage(window.currentLanguage);
     showView("vacancies");
     loadJobsFromServer();
+  }
+
+  function showConfigErrorState() {
+    // Display config error banner
+    const banner = document.getElementById("configErrorBanner");
+    if (banner) {
+      banner.classList.remove("hidden");
+      // Trigger CSS transition
+      setTimeout(() => banner.classList.add("active"), 10);
+    }
+    
+    // Disable primary interactive elements
+    const buttonsToDisable = [
+      "btnOpenCreateForm",
+      "btnGoogleSignIn",
+      "btnPreviewPublish",
+      "btnFilterApply"
+    ];
+    buttonsToDisable.forEach(id => {
+      const btn = document.getElementById(id);
+      if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = "0.5";
+        btn.style.cursor = "not-allowed";
+      }
+    });
+
+    showToast(t("toastConfigError"), "error");
   }
 
 
@@ -104,21 +194,15 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
 
-  // --- BILINGUAL TRANSLATION ENGINE ---
+  // --- TRANSLATION ENGINE (Fixed to RU) ---
   function applyLanguage(lang) {
-    window.currentLanguage = lang;
-    localStorage.setItem("birret_lang", lang);
+    const fixedLang = "ru";
+    window.currentLanguage = fixedLang;
     
-    const langBtn = document.getElementById("btnLangToggle");
-    if (langBtn) {
-      // Show "KZ" for Kazakh (kk), "RU" for Russian - user-friendly labels
-      langBtn.textContent = lang === "kk" ? "KZ" : "RU";
-    }
-    
-    document.documentElement.lang = lang;
+    document.documentElement.lang = fixedLang;
 
     const elements = document.querySelectorAll("[data-i18n]");
-    const dict = window.TRANSLATIONS[lang];
+    const dict = window.TRANSLATIONS[fixedLang];
     if (dict) {
       elements.forEach(el => {
         const key = el.getAttribute("data-i18n");
@@ -132,28 +216,39 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Refresh translation place holders for dropdown inputs
+    // Translate the platform support link in the cabinet profile card
+    const supportBtn = document.querySelector(".btn-contact-author");
+    if (supportBtn && dict && dict.supportWhatsApp) {
+      supportBtn.href = dict.supportWhatsApp;
+    }
+
+    // Refresh translation placeholders for dropdown inputs
     const pSearch = document.getElementById("formProfessionSearch");
-    if (pSearch) pSearch.placeholder = lang === "kk" ? "Іздеу..." : "Поиск...";
+    if (pSearch && dict.placeholderSearch) pSearch.placeholder = dict.placeholderSearch;
     const cSearch = document.getElementById("formCitySearch");
-    if (cSearch) cSearch.placeholder = lang === "kk" ? "Іздеу..." : "Поиск...";
+    if (cSearch && dict.placeholderSearch) cSearch.placeholder = dict.placeholderSearch;
     
     const filterP = document.getElementById("filterProfessionSearch");
-    if (filterP) filterP.placeholder = lang === "kk" ? "Мамандықты жазыңыз..." : "Введите профессию...";
+    if (filterP && dict.placeholderFormProfessionSearch) filterP.placeholder = dict.placeholderFormProfessionSearch;
     const filterC = document.getElementById("filterCitySearch");
-    if (filterC) filterC.placeholder = lang === "kk" ? "Қаланы жазыңыз..." : "Введите город...";
+    if (filterC && dict.placeholderFormCitySearch) filterC.placeholder = dict.placeholderFormCitySearch;
     const filterE = document.getElementById("filterExcludeSearch");
-    if (filterE) filterE.placeholder = lang === "kk" ? "Шектеу үшін іздеу..." : "Поиск для исключения...";
+    if (filterE && dict.placeholderFilterExcludeSearch) filterE.placeholder = dict.placeholderFilterExcludeSearch;
 
     // Dynamic age placeholders
     const fromText = document.getElementById("formAgeFromText");
     const toText = document.getElementById("formAgeToText");
     if (fromText && !fromText.classList.contains("has-value")) {
-      fromText.textContent = lang === "kk" ? "Бастап" : "От";
+      fromText.textContent = dict.ageFrom || (lang === "kk" ? "Бастап" : "От");
     }
     if (toText && !toText.classList.contains("has-value")) {
-      toText.textContent = lang === "kk" ? "Дейін" : "До";
+      toText.textContent = dict.ageTo || (lang === "kk" ? "Дейін" : "До");
     }
+
+    // Sync all multi-select tag representations in the new language
+    syncMultiSelectTags("filterProfession");
+    syncMultiSelectTags("filterCity");
+    syncMultiSelectTags("filterExclude");
 
     // Re-render components with translated static values
     applyFiltersAndRender(false);
@@ -173,6 +268,14 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log("[Auth] ✅ URL hash cleared.");
       }
     };
+
+    // If supabaseClient is a duplicate client, subscribe it to auth state changes
+    if (supabaseClient !== window.__BIRRET_SUPABASE) {
+      console.log("[Auth] Subscribing new Supabase client instance to onAuthStateChange.");
+      supabaseClient.auth.onAuthStateChange((event, session) => {
+        window.__BIRRET_AUTH_HANDLER(event, session);
+      });
+    }
 
     // Drain any auth events that fired BEFORE app.js was ready (queued in <head>)
     const queue = window.__BIRRET_AUTH_QUEUE || [];
@@ -258,18 +361,21 @@ document.addEventListener("DOMContentLoaded", () => {
         avatarUrl: avatarUrl
       };
 
+      // Sync favorites from user metadata (cloud-based) to memory state
+      if (meta.favorites && Array.isArray(meta.favorites)) {
+        state.favorites = meta.favorites;
+        saveFavoritesToStorage();
+      } else {
+        loadFavorites();
+      }
+
       // Close modal & show welcome on any sign-in event (including our INITIAL_SESSION fallback)
       const isNewLogin = (event === "SIGNED_IN" || event === "INITIAL_SESSION");
       if (isNewLogin) {
         const modal = document.getElementById("authModal");
         if (modal) modal.classList.remove("active");
 
-        showToast(
-          window.currentLanguage === "kk"
-            ? `Сәлем, ${displayName}! Жүйеге сәтті кірдіңіз.`
-            : `Добро пожаловать, ${displayName}!`,
-          "success"
-        );
+        showToast(t("toastWelcome").replace("{name}", displayName), "success");
 
         // Execute any pending action that required auth
         if (state.authRedirect) {
@@ -280,6 +386,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } else {
       state.user = null;
+      state.favorites = [];
+      saveFavoritesToStorage();
     }
 
     updateAuthUI();
@@ -289,11 +397,11 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- GOOGLE OAUTH AUTHENTICATION ---
   async function handleGoogleSignIn() {
     if (!supabaseClient) {
-      showToast(window.currentLanguage === "kk" ? "Сервермен байланыс жоқ. Қайталаңыз." : "Сервер недоступен. Попробуйте позже.", "error");
+      showToast(t("toastServerUnavailable"), "error");
       return;
     }
     if (!navigator.onLine) {
-      showToast(window.currentLanguage === "kk" ? "Интернет байланысы жоқ! Әрекет мүмкін емес." : "Отсутствие интернета! Действие невозможно.", "error");
+      showToast(t("toastOffline"), "error");
       return;
     }
 
@@ -314,10 +422,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // Browser will redirect to Google — no further action needed here
     } catch (err) {
       console.error("Google OAuth error:", err);
-      showToast(
-        (window.currentLanguage === "kk" ? "Google арқылы кіру қатесі: " : "Ошибка входа через Google: ") + err.message,
-        "error"
-      );
+      showToast(t("toastGoogleAuthError") + err.message, "error");
       if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
     }
   }
@@ -343,7 +448,7 @@ document.addEventListener("DOMContentLoaded", () => {
       state.user = null;
       updateAuthUI();
       showView("vacancies");
-      showToast(window.currentLanguage === "kk" ? "Жүйеден шықтыңыз." : "Вы вышли из системы.", "info");
+      showToast(t("toastLogoutSuccess"), "info");
     } catch (err) {
       console.error(err);
     }
@@ -354,8 +459,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const authState = document.getElementById("cabinetAuthState");
     
     if (state.user) {
-      guestState.style.display = "none";
-      authState.style.display = "block";
+      guestState.classList.add("hidden");
+      authState.classList.remove("hidden");
       
       document.getElementById("profileName").textContent = state.user.name;
       document.getElementById("profileEmail").textContent = state.user.email;
@@ -373,8 +478,8 @@ document.addEventListener("DOMContentLoaded", () => {
       
       renderMyJobs();
     } else {
-      guestState.style.display = "flex";
-      authState.style.display = "none";
+      guestState.classList.remove("hidden");
+      authState.classList.add("hidden");
     }
   }
 
@@ -384,14 +489,14 @@ document.addEventListener("DOMContentLoaded", () => {
     renderSkeletons();
     try {
       const response = await fetch("/api/jobs");
-      if (!response.ok) throw new Error("Не удалось получить вакансии с сервера");
+      if (!response.ok) throw new Error("server_error");
       
       state.jobs = await response.json();
       localStorage.setItem("birret_jobs", JSON.stringify(state.jobs));
       applyFiltersAndRender(false);
     } catch (err) {
       console.error("Database connection error:", err);
-      showToast(window.currentLanguage === "kk" ? "Деректер қорына қосылу қатесі. Локальді мәліметтер жүктелді." : "Ошибка подключения к БД. Загружены локальные данные.", "error");
+      showToast(t("toastDbError"), "error");
       
       const savedJobs = localStorage.getItem("birret_jobs");
       if (savedJobs) {
@@ -455,15 +560,16 @@ document.addEventListener("DOMContentLoaded", () => {
       menuId: "formProfessionMenu",
       searchId: "formProfessionSearch",
       listId: "formProfessionList",
-      data: () => (window.currentLanguage === "kk" ? window.PROFESSIONS_KZ : window.PROFESSIONS_RU),
+      data: () => window.getProfessionsList(window.currentLanguage),
       placeholder: "Выберите профессию",
+      isSelected: (id) => state.formState.profession === id,
       onSelect: (value) => {
         state.formState.profession = value;
         state.isDirty = true;
         validateField("profession");
         checkFormValidity();
       },
-      searchFilter: (item, query) => item.toLowerCase().includes(query.toLowerCase())
+      searchFilter: (item, query) => item.name.toLowerCase().includes(query.toLowerCase())
     });
 
     // 2. Create Job Form - City Dropdown
@@ -472,15 +578,16 @@ document.addEventListener("DOMContentLoaded", () => {
       menuId: "formCityMenu",
       searchId: "formCitySearch",
       listId: "formCityList",
-      data: () => (window.currentLanguage === "kk" ? window.CITIES_KZ : window.CITIES_RU),
+      data: () => window.getCitiesList(window.currentLanguage),
       placeholder: "Выберите город",
+      isSelected: (id) => state.formState.city === id,
       onSelect: (value) => {
         state.formState.city = value;
         state.isDirty = true;
         validateField("city");
         checkFormValidity();
       },
-      searchFilter: (item, query) => item.toLowerCase().startsWith(query.toLowerCase())
+      searchFilter: (item, query) => item.name.toLowerCase().startsWith(query.toLowerCase())
     });
 
     // 3. Create Job Form - Age "From" & "To" Dropdowns
@@ -493,7 +600,8 @@ document.addEventListener("DOMContentLoaded", () => {
       searchId: "filterProfessionSearch",
       listId: "filterProfessionList",
       tagsContainerId: "filterProfessionTags",
-      data: () => (window.currentLanguage === "kk" ? window.PROFESSIONS_KZ : window.PROFESSIONS_RU),
+      data: () => window.getProfessionsList(window.currentLanguage),
+      translate: (id) => window.translateProfession(id, window.currentLanguage),
       selectedState: state.filters.professions,
       onChanged: () => {
         state.filters.professions.forEach(prof => {
@@ -505,7 +613,7 @@ document.addEventListener("DOMContentLoaded", () => {
         syncMultiSelectTags("filterExclude");
         updateFilterBadge();
       },
-      searchFilter: (item, query) => item.toLowerCase().includes(query.toLowerCase())
+      searchFilter: (item, query) => item.name.toLowerCase().includes(query.toLowerCase())
     });
 
     // 5. Filters - City (Multi-select)
@@ -515,12 +623,13 @@ document.addEventListener("DOMContentLoaded", () => {
       searchId: "filterCitySearch",
       listId: "filterCityList",
       tagsContainerId: "filterCityTags",
-      data: () => (window.currentLanguage === "kk" ? window.CITIES_KZ : window.CITIES_RU),
+      data: () => window.getCitiesList(window.currentLanguage),
+      translate: (id) => window.translateCity(id, window.currentLanguage),
       selectedState: state.filters.cities,
       onChanged: () => {
         updateFilterBadge();
       },
-      searchFilter: (item, query) => item.toLowerCase().startsWith(query.toLowerCase())
+      searchFilter: (item, query) => item.name.toLowerCase().startsWith(query.toLowerCase())
     });
 
     // 6. Filters - Exclude Profession (Multi-select)
@@ -530,7 +639,8 @@ document.addEventListener("DOMContentLoaded", () => {
       searchId: "filterExcludeSearch",
       listId: "filterExcludeList",
       tagsContainerId: "filterExcludeTags",
-      data: () => (window.currentLanguage === "kk" ? window.PROFESSIONS_KZ : window.PROFESSIONS_RU),
+      data: () => window.getProfessionsList(window.currentLanguage),
+      translate: (id) => window.translateProfession(id, window.currentLanguage),
       selectedState: state.filters.excludeProfessions,
       onChanged: () => {
         state.filters.excludeProfessions.forEach(prof => {
@@ -543,45 +653,95 @@ document.addEventListener("DOMContentLoaded", () => {
         updateFilterBadge();
       },
       excludeMode: true,
-      searchFilter: (item, query) => item.toLowerCase().includes(query.toLowerCase())
+      searchFilter: (item, query) => item.name.toLowerCase().includes(query.toLowerCase())
     });
   }
 
-  function setupSingleSelectDropdown({ triggerId, menuId, searchId, listId, data, placeholder, onSelect, searchFilter }) {
+  function setupSingleSelectDropdown({ triggerId, menuId, searchId, listId, data, placeholder, isSelected, onSelect, searchFilter }) {
     const trigger = document.getElementById(triggerId);
     const menu = document.getElementById(menuId);
     const search = document.getElementById(searchId);
     const list = document.getElementById(listId);
     const triggerText = trigger.querySelector(".dropdown-trigger-text");
 
-    const renderList = (query = "") => {
+    // Add listbox ARIA role to dropdown menu list
+    if (list) list.setAttribute("role", "listbox");
+
+    let lastRenderedLanguage = null;
+
+    const buildOptions = () => {
       list.innerHTML = "";
       const getArray = () => (typeof data === "function" ? data() : data);
-      const filtered = getArray().filter(item => searchFilter(item, query));
+      const items = getArray();
       
-      if (filtered.length === 0) {
-        list.innerHTML = `<div class="dropdown-option" style="color: var(--color-text-light); pointer-events: none;">Ничего не найдено</div>`;
-        return;
-      }
-
-      filtered.forEach(item => {
+      items.forEach(item => {
         const option = document.createElement("div");
         option.className = "dropdown-option";
-        option.textContent = item;
+        option.setAttribute("role", "option");
         
-        if (triggerText.textContent === item) {
-          option.classList.add("selected");
-        }
+        const itemId = item.id !== undefined ? item.id : item;
+        const itemName = item.name !== undefined ? item.name : item;
+
+        option.textContent = itemName;
+        option.dataset.value = itemId;
 
         option.addEventListener("click", () => {
-          triggerText.textContent = item;
+          triggerText.textContent = itemName;
           triggerText.classList.add("has-value");
           menu.classList.remove("show");
           trigger.classList.remove("open");
-          onSelect(item);
+          trigger.setAttribute("aria-expanded", "false");
+          onSelect(itemId);
         });
         list.appendChild(option);
       });
+
+      const noResults = document.createElement("div");
+      noResults.className = "dropdown-option dropdown-no-results hidden";
+      noResults.style.color = "var(--color-text-light)";
+      noResults.style.pointerEvents = "none";
+      noResults.setAttribute("role", "presentation");
+      noResults.textContent = (window.TRANSLATIONS[window.currentLanguage] && window.TRANSLATIONS[window.currentLanguage].nothingFound) || "Ничего не найдено";
+      list.appendChild(noResults);
+
+      lastRenderedLanguage = window.currentLanguage;
+    };
+
+    const filterList = (query = "") => {
+      if (lastRenderedLanguage !== window.currentLanguage) {
+        buildOptions();
+      }
+
+      const getArray = () => (typeof data === "function" ? data() : data);
+      const items = getArray();
+      let visibleCount = 0;
+
+      const options = list.querySelectorAll(".dropdown-option:not(.dropdown-no-results)");
+      options.forEach(option => {
+        const itemId = option.dataset.value;
+        const item = items.find(i => (i.id !== undefined ? String(i.id) : String(i)) === String(itemId));
+        if (item) {
+          const matches = searchFilter(item, query);
+          if (matches) {
+            option.classList.remove("hidden");
+            visibleCount++;
+            
+            const isSel = isSelected ? isSelected(itemId) : (triggerText.textContent === (item.name !== undefined ? item.name : item));
+            option.setAttribute("aria-selected", isSel ? "true" : "false");
+            option.classList.toggle("selected", isSel);
+          } else {
+            option.classList.add("hidden");
+          }
+        } else {
+          option.classList.add("hidden");
+        }
+      });
+
+      const noResultsEl = list.querySelector(".dropdown-no-results");
+      if (noResultsEl) {
+        noResultsEl.textContent = (window.TRANSLATIONS[window.currentLanguage] && window.TRANSLATIONS[window.currentLanguage].nothingFound) || "Ничего не найдено";
+        noResultsEl.classList.toggle("hidden", visibleCount > 0);
+      }
     };
 
     trigger.addEventListener("click", (e) => {
@@ -589,18 +749,26 @@ document.addEventListener("DOMContentLoaded", () => {
       closeAllDropdowns(menuId);
       const isOpen = menu.classList.toggle("show");
       trigger.classList.toggle("open", isOpen);
+      trigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
       if (isOpen) {
         if (search) {
           search.value = "";
           search.focus();
         }
-        renderList();
+        filterList("");
+      }
+    });
+
+    trigger.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        trigger.click();
       }
     });
 
     if (search) {
       search.addEventListener("input", (e) => {
-        renderList(e.target.value);
+        filterList(e.target.value);
       });
       search.addEventListener("click", e => e.stopPropagation());
     }
@@ -622,20 +790,29 @@ document.addEventListener("DOMContentLoaded", () => {
       for (let age = 15; age <= 50; age++) {
         const option = document.createElement("div");
         option.className = "dropdown-option";
+        option.setAttribute("role", "option");
         option.textContent = age;
-        if (state.formState.ageFrom === age) option.classList.add("selected");
+        if (state.formState.ageFrom === age) {
+          option.classList.add("selected");
+          option.setAttribute("aria-selected", "true");
+        } else {
+          option.setAttribute("aria-selected", "false");
+        }
 
         option.addEventListener("click", () => {
           state.formState.ageFrom = age;
           state.isDirty = true;
-          fromText.textContent = window.currentLanguage === "kk" ? `Бастап ${age}` : `От ${age}`;
+          const prefix = t("ageFromPrefix");
+          fromText.textContent = prefix + age;
           fromText.classList.add("has-value");
           fromMenu.classList.remove("show");
           fromTrigger.classList.remove("open");
+          fromTrigger.setAttribute("aria-expanded", "false");
           
           if (state.formState.ageTo < age) {
             state.formState.ageTo = age;
-            toText.textContent = window.currentLanguage === "kk" ? `Дейін ${age}` : `До ${age}`;
+            const toPrefix = t("ageToPrefix");
+            toText.textContent = toPrefix + age;
             toText.classList.add("has-value");
           }
           
@@ -652,16 +829,24 @@ document.addEventListener("DOMContentLoaded", () => {
       for (let age = startAge; age <= 50; age++) {
         const option = document.createElement("div");
         option.className = "dropdown-option";
+        option.setAttribute("role", "option");
         option.textContent = age;
-        if (state.formState.ageTo === age) option.classList.add("selected");
+        if (state.formState.ageTo === age) {
+          option.classList.add("selected");
+          option.setAttribute("aria-selected", "true");
+        } else {
+          option.setAttribute("aria-selected", "false");
+        }
 
         option.addEventListener("click", () => {
           state.formState.ageTo = age;
           state.isDirty = true;
-          toText.textContent = window.currentLanguage === "kk" ? `Дейін ${age}` : `До ${age}`;
+          const prefix = t("ageToPrefix");
+          toText.textContent = prefix + age;
           toText.classList.add("has-value");
           toMenu.classList.remove("show");
           toTrigger.classList.remove("open");
+          toTrigger.setAttribute("aria-expanded", "false");
           
           validateField("age");
           checkFormValidity();
@@ -675,7 +860,15 @@ document.addEventListener("DOMContentLoaded", () => {
       closeAllDropdowns("formAgeFromMenu");
       const isOpen = fromMenu.classList.toggle("show");
       fromTrigger.classList.toggle("open", isOpen);
+      fromTrigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
       if (isOpen) renderFrom();
+    });
+
+    fromTrigger.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        fromTrigger.click();
+      }
     });
 
     toTrigger.addEventListener("click", (e) => {
@@ -683,11 +876,19 @@ document.addEventListener("DOMContentLoaded", () => {
       closeAllDropdowns("formAgeToMenu");
       const isOpen = toMenu.classList.toggle("show");
       toTrigger.classList.toggle("open", isOpen);
+      toTrigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
       if (isOpen) renderTo();
+    });
+
+    toTrigger.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        toTrigger.click();
+      }
     });
   }
 
-  function setupMultiSelectDropdown({ triggerId, menuId, searchId, listId, tagsContainerId, data, selectedState, onChanged, excludeMode = false, searchFilter }) {
+  function setupMultiSelectDropdown({ triggerId, menuId, searchId, listId, tagsContainerId, data, translate, selectedState, onChanged, excludeMode = false, searchFilter }) {
     const trigger = document.getElementById(triggerId);
     const menu = document.getElementById(menuId);
     const search = document.getElementById(searchId);
@@ -696,24 +897,76 @@ document.addEventListener("DOMContentLoaded", () => {
     const triggerText = trigger.querySelector(".dropdown-trigger-text");
 
     const dropdownKey = triggerId.replace("Trigger", "");
-    window[`syncMultiTags_${dropdownKey}`] = renderTagsAndList;
+    multiSelectSyncRegistry[dropdownKey] = renderTagsAndList;
+
+    if (list) list.setAttribute("role", "listbox");
+
+    let lastRenderedLanguage = null;
+
+    const buildOptions = () => {
+      list.innerHTML = "";
+      const getArray = () => (typeof data === "function" ? data() : data);
+      const items = getArray();
+
+      items.forEach(item => {
+        const option = document.createElement("div");
+        option.className = "dropdown-option";
+        option.setAttribute("role", "option");
+
+        const itemId = item.id !== undefined ? item.id : item;
+        const itemName = item.name !== undefined ? item.name : item;
+
+        option.dataset.value = itemId;
+        option.innerHTML = `
+          <span>${itemName}</span>
+          <svg class="checkbox-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 16px; height: 16px;">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
+          </svg>
+        `;
+
+        option.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const idx = selectedState.indexOf(itemId);
+          if (idx !== -1) {
+            selectedState.splice(idx, 1);
+          } else {
+            selectedState.push(itemId);
+          }
+          onChanged();
+          renderTagsAndList();
+        });
+
+        list.appendChild(option);
+      });
+
+      const noResults = document.createElement("div");
+      noResults.className = "dropdown-option dropdown-no-results hidden";
+      noResults.style.color = "var(--color-text-light)";
+      noResults.style.pointerEvents = "none";
+      noResults.setAttribute("role", "presentation");
+      noResults.textContent = (window.TRANSLATIONS[window.currentLanguage] && window.TRANSLATIONS[window.currentLanguage].nothingFound) || "Ничего не найдено";
+      list.appendChild(noResults);
+
+      lastRenderedLanguage = window.currentLanguage;
+    };
 
     function renderTagsAndList() {
       tagsContainer.innerHTML = "";
+      const dict = window.TRANSLATIONS[window.currentLanguage] || {};
       if (selectedState.length > 0) {
-        triggerText.textContent = window.currentLanguage === "kk" ? `Таңдалды: ${selectedState.length}` : `Выбрано: ${selectedState.length}`;
+        triggerText.textContent = (dict.selectedCount || "Выбрано: ") + selectedState.length;
         triggerText.classList.add("has-value");
       } else {
         triggerText.textContent = excludeMode 
-          ? (window.currentLanguage === "kk" ? "Қай жұмысты жасыру керек" : "Какие вакансии скрыть") 
-          : (window.currentLanguage === "kk" ? "Бірнешеуін таңдау" : "Выбрать несколько");
+          ? (dict.excludeModePlaceholder || "Какие вакансии скрыть") 
+          : (dict.multiSelectPlaceholder || "Выбрать несколько");
         triggerText.classList.remove("has-value");
       }
 
       selectedState.forEach(val => {
         const tag = document.createElement("div");
         tag.className = `filter-tag ${excludeMode ? 'tag-excluded' : ''}`;
-        tag.textContent = val;
+        tag.textContent = translate ? translate(val) : val;
 
         const closeBtn = document.createElement("button");
         closeBtn.className = "btn-remove-tag";
@@ -739,47 +992,41 @@ document.addEventListener("DOMContentLoaded", () => {
         tagsContainer.appendChild(tag);
       });
 
-      const query = search ? search.value : "";
-      list.innerHTML = "";
-      const getArray = () => (typeof data === "function" ? data() : data);
-      const filtered = getArray().filter(item => searchFilter(item, query));
-
-      if (filtered.length === 0) {
-        list.innerHTML = `<div class="dropdown-option" style="color: var(--color-text-light); pointer-events: none;">Ничего не найдено</div>`;
-        return;
+      if (lastRenderedLanguage !== window.currentLanguage) {
+        buildOptions();
       }
 
-      filtered.forEach(item => {
-        const option = document.createElement("div");
-        option.className = "dropdown-option";
-        option.textContent = item;
-        
-        const isSelected = selectedState.includes(item);
-        if (isSelected) {
-          option.classList.add("selected");
-        }
+      const query = search ? search.value : "";
+      const getArray = () => (typeof data === "function" ? data() : data);
+      const items = getArray();
+      let visibleCount = 0;
 
-        option.innerHTML = `
-          <span>${item}</span>
-          <svg class="checkbox-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width: 16px; height: 16px;">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7" />
-          </svg>
-        `;
+      const options = list.querySelectorAll(".dropdown-option:not(.dropdown-no-results)");
+      options.forEach(option => {
+        const itemId = option.dataset.value;
+        const item = items.find(i => (i.id !== undefined ? String(i.id) : String(i)) === String(itemId));
+        if (item) {
+          const matches = searchFilter(item, query);
+          if (matches) {
+            option.classList.remove("hidden");
+            visibleCount++;
 
-        option.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const idx = selectedState.indexOf(item);
-          if (idx !== -1) {
-            selectedState.splice(idx, 1);
+            const isSel = selectedState.includes(itemId);
+            option.setAttribute("aria-selected", isSel ? "true" : "false");
+            option.classList.toggle("selected", isSel);
           } else {
-            selectedState.push(item);
+            option.classList.add("hidden");
           }
-          onChanged();
-          renderTagsAndList();
-        });
-
-        list.appendChild(option);
+        } else {
+          option.classList.add("hidden");
+        }
       });
+
+      const noResultsEl = list.querySelector(".dropdown-no-results");
+      if (noResultsEl) {
+        noResultsEl.textContent = dict.nothingFound || "Ничего не найдено";
+        noResultsEl.classList.toggle("hidden", visibleCount > 0);
+      }
     }
 
     trigger.addEventListener("click", (e) => {
@@ -787,12 +1034,20 @@ document.addEventListener("DOMContentLoaded", () => {
       closeAllDropdowns(menuId);
       const isOpen = menu.classList.toggle("show");
       trigger.classList.toggle("open", isOpen);
+      trigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
       if (isOpen) {
         if (search) {
           search.value = "";
           search.focus();
         }
         renderTagsAndList();
+      }
+    });
+
+    trigger.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        trigger.click();
       }
     });
 
@@ -805,8 +1060,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function syncMultiSelectTags(prefix) {
-    if (window[`syncMultiTags_${prefix}`]) {
-      window[`syncMultiTags_${prefix}`]();
+    if (multiSelectSyncRegistry[prefix]) {
+      multiSelectSyncRegistry[prefix]();
     }
   }
 
@@ -824,6 +1079,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const targetMenuId = trigger.id.replace("Trigger", "Menu");
       if (targetMenuId !== exceptId) {
         trigger.classList.remove("open");
+        if (trigger.hasAttribute("aria-expanded")) {
+          trigger.setAttribute("aria-expanded", "false");
+        }
       }
     });
   }
@@ -871,7 +1129,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const rawVal = e.target.value;
       const cleanVal = rawVal.replace(/[^a-zA-Zа-яА-ЯёЁәіңғүұқөһӘІҢҒҮҰҚӨҺ0-9\s.,№-]/g, "");
       if (rawVal !== cleanVal) {
+        const selectionStart = e.target.selectionStart;
+        const selectionEnd = e.target.selectionEnd;
         e.target.value = cleanVal;
+        const diff = rawVal.length - cleanVal.length;
+        e.target.setSelectionRange(Math.max(0, selectionStart - diff), Math.max(0, selectionEnd - diff));
       }
       state.formState.address = cleanVal;
       state.isDirty = true;
@@ -898,18 +1160,39 @@ document.addEventListener("DOMContentLoaded", () => {
 
     formPayment.addEventListener("input", (e) => {
       const val = e.target.value;
+      const selectionStart = e.target.selectionStart;
+      const digitsBeforeCursor = val.substring(0, selectionStart).replace(/\D/g, "").length;
+      
       const digitsOnly = val.replace(/\D/g, "");
       
+      let formatted = "";
       if (digitsOnly) {
         let rawNum = parseInt(digitsOnly);
         if (rawNum > 5000000) {
           rawNum = 5000000;
         }
         state.formState.payment = rawNum;
-        e.target.value = String(rawNum).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+        formatted = String(rawNum).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
       } else {
         state.formState.payment = "";
-        e.target.value = "";
+        formatted = "";
+      }
+      
+      let newCursorPos = 0;
+      let digitCount = 0;
+      for (let i = 0; i < formatted.length; i++) {
+        if (digitCount === digitsBeforeCursor) {
+          break;
+        }
+        if (/\d/.test(formatted[i])) {
+          digitCount++;
+        }
+        newCursorPos++;
+      }
+      
+      e.target.value = formatted;
+      if (val) {
+        e.target.setSelectionRange(newCursorPos, newCursorPos);
       }
       
       state.isDirty = true;
@@ -918,18 +1201,15 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     formPayment.addEventListener("blur", (e) => {
-      const val = state.formState.payment;
-      if (val && typeof val === "number") {
-        const rounded = Math.round(val / 1000) * 1000;
-        state.formState.payment = rounded;
-        e.target.value = String(rounded).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-        validateField("payment");
-        checkFormValidity();
-      }
+      validateField("payment");
+      checkFormValidity();
     });
 
     formPhone.addEventListener("input", (e) => {
       const val = e.target.value;
+      const selectionStart = e.target.selectionStart;
+      const digitsBeforeCursor = val.substring(0, selectionStart).replace(/\D/g, "").length;
+      
       let digitsOnly = val.replace(/\D/g, "");
       
       if (digitsOnly.length > 0 && (digitsOnly.startsWith("7") || digitsOnly.startsWith("8")) && digitsOnly.length > 10) {
@@ -951,7 +1231,23 @@ document.addEventListener("DOMContentLoaded", () => {
         formatted += " " + digitsOnly.substring(6, 10);
       }
       
+      let newCursorPos = 0;
+      let digitCount = 0;
+      for (let i = 0; i < formatted.length; i++) {
+        if (digitCount === digitsBeforeCursor) {
+          break;
+        }
+        if (/\d/.test(formatted[i])) {
+          digitCount++;
+        }
+        newCursorPos++;
+      }
+      
       e.target.value = formatted;
+      if (val) {
+        e.target.setSelectionRange(newCursorPos, newCursorPos);
+      }
+      
       validateField("phone");
       checkFormValidity();
     });
@@ -1119,9 +1415,9 @@ document.addEventListener("DOMContentLoaded", () => {
   function clearJobForm() {
     state.formState = {
       profession: "",
-      gender: "Неважно",
-      ageFrom: 15,
-      ageTo: 50,
+      gender: "any",
+      ageFrom: 18,
+      ageTo: 30,
       description: "",
       city: "",
       address: "",
@@ -1138,10 +1434,10 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("formProfessionText").classList.remove("has-value");
     document.getElementById("formCityText").textContent = "Выберите город";
     document.getElementById("formCityText").classList.remove("has-value");
-    document.getElementById("formAgeFromText").textContent = "От";
-    document.getElementById("formAgeFromText").classList.remove("has-value");
-    document.getElementById("formAgeToText").textContent = "До";
-    document.getElementById("formAgeToText").classList.remove("has-value");
+    document.getElementById("formAgeFromText").textContent = "От 18";
+    document.getElementById("formAgeFromText").classList.add("has-value");
+    document.getElementById("formAgeToText").textContent = "До 30";
+    document.getElementById("formAgeToText").classList.add("has-value");
     document.getElementById("descCharCount").textContent = "0";
 
     document.getElementById("formAddress").disabled = false;
@@ -1156,9 +1452,9 @@ document.addEventListener("DOMContentLoaded", () => {
   function openJobForm() {
     clearJobForm();
     document.getElementById("formActionTitle").textContent = "Публикация новой вакансии";
-    document.getElementById("cabinetDashboard").style.display = "none";
-    document.getElementById("cabinetFormContainer").style.display = "block";
-    document.getElementById("cabinetPreviewContainer").style.display = "none";
+    document.getElementById("cabinetDashboard").classList.add("hidden");
+    document.getElementById("cabinetFormContainer").classList.remove("hidden");
+    document.getElementById("cabinetPreviewContainer").classList.add("hidden");
   }
 
   function editJob(jobId) {
@@ -1182,7 +1478,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("formActionTitle").textContent = "Редактирование вакансии";
     
-    document.getElementById("formProfessionText").textContent = job.profession;
+    document.getElementById("formProfessionText").textContent = window.translateProfession(job.profession, window.currentLanguage);
     document.getElementById("formProfessionText").classList.add("has-value");
     
     const genderRadios = document.getElementsByName("requiredGender");
@@ -1199,7 +1495,7 @@ document.addEventListener("DOMContentLoaded", () => {
     descTextarea.value = job.description;
     document.getElementById("descCharCount").textContent = job.description.length;
 
-    document.getElementById("formCityText").textContent = job.city;
+    document.getElementById("formCityText").textContent = window.translateCity(job.city, window.currentLanguage);
     document.getElementById("formCityText").classList.add("has-value");
 
     const addressInput = document.getElementById("formAddress");
@@ -1234,9 +1530,9 @@ document.addEventListener("DOMContentLoaded", () => {
     state.isDirty = false;
     checkFormValidity();
 
-    document.getElementById("cabinetDashboard").style.display = "none";
-    document.getElementById("cabinetFormContainer").style.display = "block";
-    document.getElementById("cabinetPreviewContainer").style.display = "none";
+    document.getElementById("cabinetDashboard").classList.add("hidden");
+    document.getElementById("cabinetFormContainer").classList.remove("hidden");
+    document.getElementById("cabinetPreviewContainer").classList.add("hidden");
   }
 
   // --- PREVIEW SCREEN & PUBLISH LOGIC ---
@@ -1274,8 +1570,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     previewCardContent.innerHTML = mockJobCard;
 
-    formContainer.style.display = "none";
-    previewContainer.style.display = "block";
+    formContainer.classList.add("hidden");
+    previewContainer.classList.remove("hidden");
   }
 
   // PostgreSQL POST API Integration
@@ -1287,7 +1583,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const publishBtn = document.getElementById("btnPreviewPublish");
     publishBtn.disabled = true;
-    publishBtn.textContent = window.currentLanguage === "kk" ? "Жариялануда..." : "Публикация...";
+    publishBtn.textContent = t("btnPublishing");
 
     const rawDesc = state.formState.description;
     const cleanDesc = rawDesc.replace(/<\/?[^>]+(>|$)/g, "");
@@ -1326,7 +1622,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Сервер не смог сохранить вакансию");
+        throw new Error(serverCodeToast(errorData.code) || errorData.error || t("toastPublishError"));
       }
       
       const savedJob = await response.json();
@@ -1390,9 +1686,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- OPTIMISTIC FAVORITES (HEART ICON TOGGLE) ---
-  function toggleFavorite(jobId) {
+  async function toggleFavorite(jobId) {
     if (!state.user) {
-      document.getElementById("authModalText").textContent = "Войдите в систему, чтобы добавлять вакансии в список избранного.";
+      document.getElementById("authModalText").textContent = (window.TRANSLATIONS[window.currentLanguage] && window.TRANSLATIONS[window.currentLanguage].authModalFavDesc) || "Войдите в систему, чтобы добавлять вакансии в список избранного.";
       document.getElementById("authModal").classList.add("active");
       state.authRedirect = { type: "favorite", jobId: jobId };
       return;
@@ -1400,7 +1696,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const idx = state.favorites.indexOf(jobId);
     const isAdding = (idx === -1);
-    
+    const previousFavorites = [...state.favorites];
+
     // --- OPTIMISTIC UI UPDATE ---
     if (isAdding) {
       state.favorites.push(jobId);
@@ -1413,35 +1710,35 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.classList.toggle("active", isAdding);
     });
 
-    const successRate = 0.95;
-    const syncSuccess = Math.random() < successRate;
+    if (state.currentView === "favorites") {
+      renderFavorites();
+    }
 
-    setTimeout(() => {
-      if (syncSuccess) {
-        saveFavoritesToStorage();
-        if (state.currentView === "favorites") {
-          renderFavorites();
-        }
-      } else {
-        // Rollback optimistic change
-        const rollbackIdx = state.favorites.indexOf(jobId);
-        if (isAdding && rollbackIdx !== -1) {
-          state.favorites.splice(rollbackIdx, 1);
-        } else if (!isAdding && rollbackIdx === -1) {
-          state.favorites.push(jobId);
-        }
-        
-        heartBtns.forEach(btn => {
-          btn.classList.toggle("active", !isAdding);
-        });
+    try {
+      // Sync favorites to user metadata on Supabase auth server
+      const { data, error } = await supabaseClient.auth.updateUser({
+        data: { favorites: state.favorites }
+      });
 
-        if (state.currentView === "favorites") {
-          renderFavorites();
-        }
+      if (error) throw error;
 
-        showToast(window.TRANSLATIONS[window.currentLanguage].toastRollbackFav, "error");
+      saveFavoritesToStorage();
+    } catch (err) {
+      console.error("[Favorites] Sync failed, rolling back:", err);
+      
+      // Rollback optimistic change
+      state.favorites = previousFavorites;
+      
+      heartBtns.forEach(btn => {
+        btn.classList.toggle("active", !isAdding);
+      });
+
+      if (state.currentView === "favorites") {
+        renderFavorites();
       }
-    }, 800);
+
+      showToast((window.TRANSLATIONS[window.currentLanguage] && window.TRANSLATIONS[window.currentLanguage].toastRollbackFav) || "Не удалось синхронизировать список избранного с сервером.", "error");
+    }
   }
 
   // --- FILTER SYSTEM APPLICATOR & RENDERER ---
@@ -1477,15 +1774,25 @@ document.addEventListener("DOMContentLoaded", () => {
       result = result.filter(job => job.isRemote);
     }
 
+    if (state.filters.gender === "male") {
+      result = result.filter(job => job.gender === "male" || job.gender === "any");
+    } else if (state.filters.gender === "female") {
+      result = result.filter(job => job.gender === "female" || job.gender === "any");
+    }
+
     if (state.filters.age !== null && state.filters.age !== "") {
       const userAge = Number(state.filters.age);
       result = result.filter(job => job.ageFrom <= userAge && userAge <= job.ageTo);
     }
 
     if (state.filters.sort === "newest") {
-      result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      const mapped = result.map((job, idx) => ({ idx, val: new Date(job.createdAt).getTime() }));
+      mapped.sort((a, b) => b.val - a.val);
+      result = mapped.map(item => result[item.idx]);
     } else if (state.filters.sort === "oldest") {
-      result.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+      const mapped = result.map((job, idx) => ({ idx, val: new Date(job.createdAt).getTime() }));
+      mapped.sort((a, b) => a.val - b.val);
+      result = mapped.map(item => result[item.idx]);
     } else if (state.filters.sort === "highest_payment") {
       result.sort((a, b) => {
         const payA = a.isNegotiable ? 0 : a.payment;
@@ -1493,7 +1800,13 @@ document.addEventListener("DOMContentLoaded", () => {
         return payB - payA;
       });
     } else if (state.filters.sort === "alphabetical") {
-      result.sort((a, b) => a.profession.localeCompare(b.profession, window.currentLanguage));
+      const lang = window.currentLanguage;
+      const mapped = result.map((job, idx) => ({
+        idx,
+        val: window.translateProfession(job.profession, lang)
+      }));
+      mapped.sort((a, b) => a.val.localeCompare(b.val, lang));
+      result = mapped.map(item => result[item.idx]);
     }
 
     return result;
@@ -1622,21 +1935,21 @@ document.addEventListener("DOMContentLoaded", () => {
       item.className = "my-job-item";
       
       const payLabel = job.isNegotiable 
-        ? (window.currentLanguage === "kk" ? "Келісімді" : "Договорная")
+        ? t("negotiablePrice")
         : `${String(job.payment).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ₸`;
       const timeLabel = getJobDateLabel(job.createdAt);
 
       item.innerHTML = `
         <div class="my-job-info">
-          <span class="my-job-title">${escapeHTML(job.profession)}</span>
+          <span class="my-job-title">${escapeHTML(window.translateProfession(job.profession, window.currentLanguage))}</span>
           <div class="my-job-meta">
             <span>${payLabel}</span>
-            <span>${escapeHTML(job.city)} (${timeLabel})</span>
+            <span>${escapeHTML(window.translateCity(job.city, window.currentLanguage))} (${timeLabel})</span>
           </div>
         </div>
         <div class="my-job-actions">
-          <button class="btn-my-job-action edit" data-edit-id="${job.id}">Изменить</button>
-          <button class="btn-my-job-action delete" data-delete-id="${job.id}">Удалить</button>
+          <button class="btn-my-job-action edit" data-edit-id="${job.id}">${window.TRANSLATIONS[window.currentLanguage].btnEditAction}</button>
+          <button class="btn-my-job-action delete" data-delete-id="${job.id}">${window.TRANSLATIONS[window.currentLanguage].btnDeleteAction}</button>
         </div>
       `;
 
@@ -1648,27 +1961,22 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function translateGender(gender) {
-    if (window.currentLanguage === "kk") {
-      if (gender === "Мужской") return "Ер";
-      if (gender === "Женский") return "Әйел";
-      return "Маңызды емес";
-    }
-    return gender;
+    return window.translateGender(gender, window.currentLanguage);
   }
 
   function createVacancyCardHTML(job, isPreview = false) {
     const isFav = state.favorites.includes(job.id);
     const timeLabel = getJobDateLabel(job.createdAt);
     const payLabel = job.isNegotiable 
-      ? (window.currentLanguage === "kk" ? "Келісімді" : "Договорная") 
+      ? t("negotiablePrice") 
       : `${String(job.payment).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ₸`;
     const remoteLabel = job.isRemote 
-      ? (window.currentLanguage === "kk" ? "Қашықтан" : "Удаленно") 
-      : escapeHTML(job.city);
+      ? t("remoteJob") 
+      : `${escapeHTML(window.translateCity(job.city, window.currentLanguage))}${job.address ? `, ${escapeHTML(job.address)}` : ''}`;
     
     return `
       <div class="vacancy-card-header">
-        <span class="vacancy-profession">${escapeHTML(job.profession)}</span>
+        <span class="vacancy-profession">${escapeHTML(window.translateProfession(job.profession, window.currentLanguage))}</span>
         ${!isPreview ? `
           <button class="vacancy-favorite-btn ${isFav ? 'active' : ''}" data-favorite-id="${job.id}">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1680,13 +1988,13 @@ document.addEventListener("DOMContentLoaded", () => {
       
       <div class="vacancy-badges">
         <span class="badge badge-payment">${payLabel}</span>
-        ${job.isRemote ? `<span class="badge badge-remote">${window.currentLanguage === "kk" ? "Қашықтан" : "Удаленно"}</span>` : ''}
-        <span class="badge">${window.currentLanguage === "kk" ? "Жас" : "Возраст"}: ${job.ageFrom} - ${job.ageTo} ${window.currentLanguage === "kk" ? "жас" : "лет"}</span>
-        <span class="badge">${window.currentLanguage === "kk" ? "Жынысы" : "Пол"}: ${translateGender(job.gender)}</span>
+        ${job.isRemote ? `<span class="badge badge-remote">${t("remoteJob")}</span>` : ''}
+        <span class="badge">${t("cardBadgeAge")}: ${job.ageFrom} - ${job.ageTo} ${t("cardBadgeAgeUnit")}</span>
+        <span class="badge">${t("cardBadgeGender")}: ${translateGender(job.gender)}</span>
       </div>
-
+ 
       <div class="vacancy-description">${formatDescriptionHTML(job.description)}</div>
-
+ 
       <div class="vacancy-meta">
         <div class="vacancy-meta-left">
           <span class="vacancy-location">
@@ -1702,30 +2010,43 @@ document.addEventListener("DOMContentLoaded", () => {
       
       ${isPreview ? `
         <div style="margin-top: 14px;">
-          <a class="btn-whatsapp-link" href="${generateWhatsAppLink(job.phone, job.profession)}" target="_blank">
+          <a class="btn-whatsapp-link" href="${generateWhatsAppLink(job.phone, window.translateProfession(job.profession, window.currentLanguage))}" target="_blank">
             <svg viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
               <path d="M12.012 2c-5.506 0-9.989 4.478-9.989 9.984a9.96 9.96 0 001.37 5.028L2 22l5.13-1.346a9.928 9.928 0 004.877 1.277h.005c5.505 0 9.989-4.478 9.99-9.985A9.972 9.972 0 0012.012 2zm5.72 13.917c-.246.696-1.423 1.269-1.95 1.34-.486.066-.994.095-2.203-.393a8.946 8.946 0 01-3.69-2.43 9.773 9.773 0 01-1.89-2.732c-.39-.68-.135-1.04.167-1.36.223-.238.486-.532.658-.77.165-.246.216-.402.324-.67.108-.268.043-.512-.02-.67-.066-.16-.583-1.4-.803-1.925-.213-.514-.452-.455-.62-.464-.15-.008-.323-.008-.495-.008a.952.952 0 00-.687.323c-.237.26-.902.883-.902 2.15 0 1.268.923 2.493 1.053 2.671.13.178 1.817 2.776 4.4 3.887.615.264 1.094.42 1.468.54.618.196 1.18.17 1.626.104.498-.074 1.53-.624 1.745-1.229.215-.604.215-1.12.15-1.229-.064-.11-.237-.17-.487-.294z"/>
             </svg>
-            <span>${window.currentLanguage === "kk" ? "WhatsApp-ты тексеру" : "Проверить WhatsApp"}</span>
+            <span>${t("btnCheckWa")}</span>
           </a>
         </div>
       ` : ''}
     `;
   }
 
+  function getLocalDateInUTC5(dateOrStr) {
+    const date = new Date(dateOrStr);
+    // Shift date to UTC+5 representation
+    const utc5Time = date.getTime() + (5 * 60 * 60 * 1000);
+    const d = new Date(utc5Time);
+    return {
+      year: d.getUTCFullYear(),
+      month: d.getUTCMonth(),
+      day: d.getUTCDate()
+    };
+  }
+
   function getJobDateLabel(dateStr) {
-    const date = new Date(dateStr);
-    const today = new Date();
-    const yesterday = new Date();
-    yesterday.setDate(today.getDate() - 1);
+    const jobDate = getLocalDateInUTC5(dateStr);
+    const todayDate = getLocalDateInUTC5(new Date());
     
-    if (date.toDateString() === today.toDateString()) {
-      return window.currentLanguage === "kk" ? "Бүгін" : "Сегодня";
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return window.currentLanguage === "kk" ? "Кеше" : "Вчера";
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const yesterdayDate = getLocalDateInUTC5(yesterday);
+    
+    if (jobDate.year === todayDate.year && jobDate.month === todayDate.month && jobDate.day === todayDate.day) {
+      return t("today");
+    } else if (jobDate.year === yesterdayDate.year && jobDate.month === yesterdayDate.month && jobDate.day === yesterdayDate.day) {
+      return t("yesterday");
     } else {
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(jobDate.day).padStart(2, '0');
+      const month = String(jobDate.month + 1).padStart(2, '0');
       return `${day}.${month}`;
     }
   }
@@ -1734,23 +2055,21 @@ document.addEventListener("DOMContentLoaded", () => {
     const cleanPhone = "7" + phoneNum.replace(/\D/g, "");
     const message = window.currentLanguage === "kk"
       ? `Сәлеметсіз бе, мен сіздің сайтыңыздағы "${professionName}" бос жұмыс орны бойынша жазып тұрмын.`
-      : `Здравствуйте, я пишу по поводу вакансии "${professionName}" на вашем сайте.`;
+      : `Здравствуйте, я пишу по поводу вакансии "${professionName}" на вашем сайте.`; // whatsapp greeting — intentionally untranslated (WA deep-link, not UI)
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
   }
 
   function openWhatsAppLink(jobId) {
     const job = state.jobs.find(j => j.id === jobId);
     if (!job) return;
-    const url = generateWhatsAppLink(job.phone, job.profession);
+    const url = generateWhatsAppLink(job.phone, window.translateProfession(job.profession, window.currentLanguage));
     window.open(url, "_blank");
   }
 
   // --- DETAIL MODAL & GUEST BLOCKS ---
   function openJobDetails(jobId) {
     if (!state.user) {
-      document.getElementById("authModalText").textContent = window.currentLanguage === "kk"
-        ? "Жұмыстың толық мәліметтерін көру және хабарласу үшін тіркелуіңіз қажет."
-        : "Войдите в систему, чтобы смотреть детали вакансии и связываться с работодателями.";
+      document.getElementById("authModalText").textContent = t("authModalDetailsDesc");
       document.getElementById("authModal").classList.add("active");
       state.authRedirect = { type: "viewDetails", jobId: jobId };
       return;
@@ -1759,37 +2078,32 @@ document.addEventListener("DOMContentLoaded", () => {
     const job = state.jobs.find(j => j.id === jobId);
     if (!job) return;
 
-    document.getElementById("detailProfession").textContent = job.profession;
+    document.getElementById("detailProfession").textContent = window.translateProfession(job.profession, window.currentLanguage);
     
     const favBtn = document.getElementById("detailFavoriteBtn");
     favBtn.setAttribute("data-favorite-id", job.id);
     favBtn.classList.toggle("active", state.favorites.includes(job.id));
     
     const payLabel = job.isNegotiable 
-      ? (window.currentLanguage === "kk" ? "Келісімді" : "Договорная") 
+      ? t("negotiablePrice") 
       : `${String(job.payment).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ₸`;
       
     document.getElementById("detailBadges").innerHTML = `
       <span class="badge badge-payment">${payLabel}</span>
-      ${job.isRemote ? `<span class="badge badge-remote">${window.currentLanguage === "kk" ? "Қашықтан" : "Удаленно"}</span>` : ""}
-      <span class="badge">${window.currentLanguage === "kk" ? "Жас" : "Возраст"}: ${job.ageFrom} - ${job.ageTo} ${window.currentLanguage === "kk" ? "жас" : "лет"}</span>
-      <span class="badge">${window.currentLanguage === "kk" ? "Жынысы" : "Пол"}: ${translateGender(job.gender)}</span>
+      ${job.isRemote ? `<span class="badge badge-remote">${t("remoteJob")}</span>` : ""}
+      <span class="badge">${t("cardBadgeAge")}: ${job.ageFrom} - ${job.ageTo} ${t("cardBadgeAgeUnit")}</span>
+      <span class="badge">${t("cardBadgeGender")}: ${translateGender(job.gender)}</span>
     `;
 
     document.getElementById("detailDescription").innerHTML = formatDescriptionHTML(job.description);
     
     const remoteLabel = job.isRemote 
-      ? (window.currentLanguage === "kk" ? "Қашықтан жұмыс" : "Удаленная работа") 
-      : `${job.city}, ${job.address}`;
+      ? t("cardRemoteWorkLabel") 
+      : `${window.translateCity(job.city, window.currentLanguage)}, ${job.address}`;
     document.getElementById("detailAddress").textContent = remoteLabel;
     
-    document.getElementById("detailTime").textContent = window.currentLanguage === "kk"
-      ? `Жарияланған уақыты: ${getJobDateLabel(job.createdAt)}`
-      : `Опубликовано: ${getJobDateLabel(job.createdAt)}`;
-    
-    document.getElementById("detailCriteria").textContent = window.currentLanguage === "kk"
-      ? `Қажетті жыныс: ${translateGender(job.gender)} | Жас: ${job.ageFrom} - ${job.ageTo} жас`
-      : `Требуемый пол: ${job.gender} | Возраст: от ${job.ageFrom} до ${job.ageTo} лет`;
+    document.getElementById("detailTime").textContent =
+      `${t("detailsPublished")}: ${getJobDateLabel(job.createdAt)}`;
 
     const waBtn = document.getElementById("detailWhatsAppBtn");
     
@@ -1803,16 +2117,16 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       if (job.phone.length !== 10) {
-        showToast(window.currentLanguage === "kk" ? "Қате телефон нөмірі! WhatsApp-қа өту мүмкін емес." : "Некорректный номер телефона! Открыть WhatsApp невозможно.", "error");
+        showToast(t("toastPhoneError"), "error");
         return;
       }
       
       if (!navigator.onLine) {
-        showToast(window.currentLanguage === "kk" ? "Интернет байланысы жоқ! WhatsApp-қа өту мүмкін емес." : "Соединение с интернетом потеряно! Не удалось запустить WhatsApp.", "error");
+        showToast(t("toastWhatsAppContextLost"), "error");
         return;
       }
 
-      const url = generateWhatsAppLink(job.phone, job.profession);
+      const url = generateWhatsAppLink(job.phone, window.translateProfession(job.profession, window.currentLanguage));
       window.open(url, "_blank");
     };
 
@@ -1845,9 +2159,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     if (viewName === "cabinet") {
-      document.getElementById("cabinetDashboard").style.display = "block";
-      document.getElementById("cabinetFormContainer").style.display = "none";
-      document.getElementById("cabinetPreviewContainer").style.display = "none";
+      document.getElementById("cabinetDashboard").classList.remove("hidden");
+      document.getElementById("cabinetFormContainer").classList.add("hidden");
+      document.getElementById("cabinetPreviewContainer").classList.add("hidden");
       renderMyJobs();
     }
 
@@ -1894,12 +2208,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (state.filters.excludeProfessions.length > 0) count++;
     if (state.filters.age !== null && state.filters.age !== "") count++;
     if (state.filters.remoteOnly) count++;
+    if (state.filters.gender && state.filters.gender !== "all") count++;
 
     if (count > 0) {
       badge.textContent = count;
-      badge.style.display = "inline-flex";
+      badge.classList.remove("hidden");
     } else {
-      badge.style.display = "none";
+      badge.classList.add("hidden");
     }
   }
 
@@ -1954,12 +2269,17 @@ document.addEventListener("DOMContentLoaded", () => {
         cities: [],
         excludeProfessions: [],
         age: null,
-        remoteOnly: false
+        remoteOnly: false,
+        gender: "all"
       };
 
       document.getElementById("filterSort").value = "newest";
       document.getElementById("filterAge").value = "";
       document.getElementById("filterRemoteOnly").checked = false;
+
+      document.querySelectorAll("#filterGenderGroup .gender-seg-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.gender === "all");
+      });
 
       syncMultiSelectTags("filterProfession");
       syncMultiSelectTags("filterCity");
@@ -1969,7 +2289,7 @@ document.addEventListener("DOMContentLoaded", () => {
       closeFilter();
       applyFiltersAndRender();
       renderActiveFilterTags();
-      showToast(window.currentLanguage === "kk" ? "Сүзгілер тазаланды." : "Фильтры сброшены.", "info");
+      showToast(t("toastFiltersReset"), "info");
     });
 
     document.getElementById("btnOpenCreateForm").addEventListener("click", () => {
@@ -1995,20 +2315,39 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("btnFormPreview").addEventListener("click", showFormPreview);
 
     document.getElementById("btnPreviewEdit").addEventListener("click", () => {
-      document.getElementById("cabinetPreviewContainer").style.display = "none";
-      document.getElementById("cabinetFormContainer").style.display = "block";
+      document.getElementById("cabinetPreviewContainer").classList.add("hidden");
+      document.getElementById("cabinetFormContainer").classList.remove("hidden");
     });
 
     document.getElementById("btnPreviewPublish").addEventListener("click", handlePublishVacancy);
 
-    // Language Toggler
-    const langBtn = document.getElementById("btnLangToggle");
-    if (langBtn) {
-      langBtn.addEventListener("click", () => {
-        const nextLang = window.currentLanguage === "ru" ? "kk" : "ru";
-        applyLanguage(nextLang);
+    // Dark Mode Toggler
+    const btnDarkMode = document.getElementById("btnDarkMode");
+    if (btnDarkMode) {
+      btnDarkMode.addEventListener("click", () => {
+        const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+        if (isDark) {
+          document.documentElement.removeAttribute("data-theme");
+          localStorage.setItem("birret_theme", "light");
+          document.getElementById("iconSun").classList.add("hidden");
+          document.getElementById("iconMoon").classList.remove("hidden");
+        } else {
+          document.documentElement.setAttribute("data-theme", "dark");
+          localStorage.setItem("birret_theme", "dark");
+          document.getElementById("iconSun").classList.remove("hidden");
+          document.getElementById("iconMoon").classList.add("hidden");
+        }
       });
     }
+
+    // Gender filter buttons handling
+    document.querySelectorAll("#filterGenderGroup .gender-seg-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("#filterGenderGroup .gender-seg-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        state.filters.gender = btn.dataset.gender;
+      });
+    });
 
     // Google OAuth Button
     const googleBtn = document.getElementById("btnGoogleSignIn");
@@ -2105,6 +2444,11 @@ document.addEventListener("DOMContentLoaded", () => {
           } else if (type === "remote") {
             state.filters.remoteOnly = false;
             document.getElementById("filterRemoteOnly").checked = false;
+          } else if (type === "gender") {
+            state.filters.gender = "all";
+            document.querySelectorAll("#filterGenderGroup .gender-seg-btn").forEach(b => {
+              b.classList.toggle("active", b.dataset.gender === "all");
+            });
           }
 
           updateFilterBadge();
@@ -2117,14 +2461,20 @@ document.addEventListener("DOMContentLoaded", () => {
       tagsContainer.appendChild(tag);
     };
 
-    state.filters.professions.forEach(p => addTag(p, "profession", p));
-    state.filters.cities.forEach(c => addTag(c, "city", c));
-    state.filters.excludeProfessions.forEach(p => addTag(`Скрыть: ${p}`, "exclude", p));
+    state.filters.professions.forEach(p => addTag(window.translateProfession(p, window.currentLanguage), "profession", p));
+    state.filters.cities.forEach(c => addTag(window.translateCity(c, window.currentLanguage), "city", c));
+    state.filters.excludeProfessions.forEach(p => {
+      addTag(`${t("tagPrefixExclude")}${window.translateProfession(p, window.currentLanguage)}`, "exclude", p);
+    });
     if (state.filters.age) {
-      addTag(`Возраст: ${state.filters.age}`, "age");
+      addTag(`${t("tagPrefixAge")}${state.filters.age}`, "age");
     }
     if (state.filters.remoteOnly) {
-      addTag("Удаленно", "remote");
+      addTag(t("remoteJob"), "remote");
+    }
+    if (state.filters.gender && state.filters.gender !== "all") {
+      const genderText = state.filters.gender === "male" ? t("filterGenderMale") : t("filterGenderFemale");
+      addTag(genderText, "gender");
     }
   }
 

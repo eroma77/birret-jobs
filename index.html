@@ -2,53 +2,49 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BirRet — Платформа разовых работ</title>
   
   <!-- Supabase client SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <!--
-    CRITICAL: Supabase client is created HERE — before ANY other JS — so the SDK
-    can synchronously detect the #access_token hash from the OAuth redirect.
-    The onAuthStateChange listener is also registered immediately so that
-    the SIGNED_IN event (which fires async but before DOMContentLoaded) is
-    captured in __BIRRET_AUTH_QUEUE and processed once app.js is ready.
-    The anon key is intentionally public — it's safe to include in the frontend.
+    CRITICAL: Supabase client is initialized via a dynamic configuration fetch window.__BIRRET_CONFIG_PROMISE.
+    This resolves the initialization race condition with app.js while avoiding credentials leakage.
   -->
   <script>
     (function () {
-      var SUPABASE_URL  = 'https://mkgsoamugnnbqgwgvinb.supabase.co';
-      var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1rZ3NvYW11Z25uYnFnd2d2aW5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAyNjU0MDAsImV4cCI6MjA5NTg0MTQwMH0.S5u7V_UiPVYJzkE3bF7vXz4WjXLcs2S8ntSiq5r4woA';
+      window.__BIRRET_SUPABASE = null;
+      window.__BIRRET_AUTH_QUEUE = [];
+      window.__BIRRET_AUTH_HANDLER = null; // will be set by initSupabaseAuth()
 
-      try {
-        window.__BIRRET_SUPABASE = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
-          auth: {
-            detectSessionInUrl: true,
-            persistSession: true,
-            autoRefreshToken: true
-          }
+      // Fetch config dynamically from backend and expose the promise
+      window.__BIRRET_CONFIG_PROMISE = fetch('/api/config')
+        .then(function (res) {
+          if (!res.ok) throw new Error('Config request failed');
+          return res.json();
+        })
+        .then(function (config) {
+          window.__BIRRET_SUPABASE = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
+            auth: {
+              detectSessionInUrl: true,
+              persistSession: true,
+              autoRefreshToken: true
+            }
+          });
+          console.log('[Birret Early] ✅ Supabase client initialized dynamically.');
+
+          // Listen to auth state transitions
+          window.__BIRRET_SUPABASE.auth.onAuthStateChange(function (event, session) {
+            console.log('[Birret Early] auth event:', event, session ? session.user.email : 'no session');
+            if (typeof window.__BIRRET_AUTH_HANDLER === 'function') {
+              window.__BIRRET_AUTH_HANDLER(event, session);
+            } else {
+              window.__BIRRET_AUTH_QUEUE.push({ event: event, session: session });
+            }
+          });
+          return window.__BIRRET_SUPABASE;
         });
-        console.log('[Birret] ✅ Supabase client ready. Hash:', window.location.hash.substring(0, 50) || '(none)');
-      } catch (e) {
-        console.error('[Birret] ❌ createClient failed:', e);
-        return;
-      }
-
-      // Queue to capture auth events that fire before app.js / DOMContentLoaded
-      window.__BIRRET_AUTH_QUEUE    = [];
-      window.__BIRRET_AUTH_HANDLER  = null; // will be set by initSupabaseAuth()
-
-      window.__BIRRET_SUPABASE.auth.onAuthStateChange(function (event, session) {
-        console.log('[Birret Early] auth event:', event, session ? session.user.email : 'no session');
-        if (typeof window.__BIRRET_AUTH_HANDLER === 'function') {
-          // app.js is already ready — call directly
-          window.__BIRRET_AUTH_HANDLER(event, session);
-        } else {
-          // app.js not ready yet — queue the event
-          window.__BIRRET_AUTH_QUEUE.push({ event: event, session: session });
-        }
-      });
     })();
   </script>
 
@@ -59,19 +55,27 @@
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&subset=cyrillic,cyrillic-ext&display=swap" rel="stylesheet">
   
   <!-- CSS -->
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=2.1.0">
 </head>
 
 <body>
   <!-- Force browser to load cyrillic-ext subset of Montserrat font -->
-  <div style="display:none; font-family: 'Montserrat';">әіңғүұқөһӘІҢҒҮҰҚӨҺ</div>
+  <div class="font-preload">әіңғүұқөһӘІҢҒҮҰҚӨҺ</div>
 
   <!-- Offline status notification -->
   <div id="offlineBanner" class="offline-banner">
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 18px; height: 18px;">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
       <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
     </svg>
     <span data-i18n="offlineBannerText">Соединение с интернетом потеряно. Ваши данные сохранены, попробуйте отправить позже</span>
+  </div>
+
+  <!-- Configuration error notification -->
+  <div id="configErrorBanner" class="offline-banner hidden">
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+    </svg>
+    <span data-i18n="configErrorBannerText">Не удалось загрузить конфигурацию приложения. Пожалуйста, проверьте интернет-соединение и перезагрузите страницу.</span>
   </div>
 
   <!-- Toast Notification Container -->
@@ -81,27 +85,35 @@
   <header class="header">
     <div class="container header-inner">
       <!-- Logo placeholder (name TBD) -->
-      <div style="width: 40px;"></div>
-      <div style="display: flex; gap: 8px; align-items: center;">
-        <button id="btnLangToggle" class="btn-filter-trigger" style="min-width: 48px; justify-content: center; padding: 8px 12px; font-weight: 700;">RU</button>
+      <div class="header-spacer"></div>
+      <div class="header-actions">
+        <!-- Dark Mode Toggle -->
+        <button id="btnDarkMode" class="btn-icon-header" aria-label="Переключить тему" title="Переключить тему">
+          <svg id="iconSun" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="hidden">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+          </svg>
+          <svg id="iconMoon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+          </svg>
+        </button>
         <button id="btnFilterTrigger" class="btn-filter-trigger">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 01-.659 1.591l-5.432 5.432a2.25 2.25 0 00-.659 1.591v2.927a2.25 2.25 0 01-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 00-.659-1.591L3.659 7.409A2.25 2.25 0 013 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0112 3z" />
           </svg>
           <span data-i18n="filterBtn">Фильтр</span>
-          <span id="filterBadge" class="filter-count-badge" style="display: none;">0</span>
+          <span id="filterBadge" class="filter-count-badge hidden">0</span>
         </button>
       </div>
     </div>
   </header>
 
   <!-- Main Container -->
-  <main class="container" style="flex: 1;">
+  <main class="container">
 
     <!-- VIEW 1: Vacancies Feed -->
     <section id="viewVacancies" class="view-section active">
       <!-- Active Filter Tags -->
-      <div id="activeFiltersTags" class="filter-tags-list" style="margin-bottom: 12px;"></div>
+      <div id="activeFiltersTags" class="filter-tags-list mb-12"></div>
       
       <!-- Feed Container -->
       <div id="vacanciesFeed">
@@ -111,9 +123,9 @@
 
     <!-- VIEW 2: Favorites Page -->
     <section id="viewFavorites" class="view-section">
-      <div style="margin-bottom: 16px;">
-        <h2 data-i18n="favTitle" style="font-size: 20px; font-weight: 850;">Избранные вакансии</h2>
-        <p data-i18n="favSubtitle" style="font-size: 13px; color: var(--color-text-muted);">Список сохраненных вами вакансий</p>
+      <div class="section-header">
+        <h2 data-i18n="favTitle" class="section-title">Избранные вакансии</h2>
+        <p data-i18n="favSubtitle" class="section-subtitle">Список сохраненных вами вакансий</p>
       </div>
       <div id="favoritesFeed"></div>
     </section>
@@ -122,7 +134,7 @@
     <section id="viewCabinet" class="view-section">
       
       <!-- Guest State (Not authorized) -->
-      <div id="cabinetGuestState" class="empty-state" style="background-color: var(--color-card); border: 1px solid var(--color-border); border-radius: var(--radius-lg); margin-top: 10px;">
+      <div id="cabinetGuestState" class="empty-state empty-state-card">
         <div class="modal-icon-wrapper">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 01-7.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
@@ -130,13 +142,13 @@
         </div>
         <h3 data-i18n="guestCabinetTitle" class="empty-state-title">Войдите в личный кабинет</h3>
         <p data-i18n="guestCabinetDesc" class="empty-state-desc">Зарегистрируйтесь, чтобы размещать новые объявления и управлять своими публикациями.</p>
-        <button class="btn-filter-apply btn-auth-trigger" style="max-width: 280px; margin-top: 8px; font-weight: 700; width: 100%; justify-content: center;">
-          <span data-i18n="btnGoogleAuth">Войти / Зарегистрироваться</span>
+        <button class="btn-filter-apply btn-auth-trigger">
+          <span data-i18n="btnCabinetAuth">Войти / Зарегистрироваться</span>
         </button>
       </div>
 
       <!-- Auth State (Logged in) -->
-      <div id="cabinetAuthState" style="display: none;">
+      <div id="cabinetAuthState" class="hidden">
         <!-- Profile Card -->
         <div class="cabinet-profile-card">
           <div class="profile-avatar-wrapper">
@@ -148,8 +160,8 @@
           </div>
           <div class="profile-actions-wrapper">
             <button id="btnLogout" class="btn-logout" data-i18n="profileLogout">Выйти</button>
-            <a href="https://wa.me/77754737619" target="_blank" class="btn-contact-author">
-              <svg viewBox="0 0 24 24" fill="currentColor" style="width: 14px; height: 14px; flex-shrink: 0;">
+            <a href="#" target="_blank" class="btn-contact-author">
+              <svg viewBox="0 0 24 24" fill="currentColor" class="icon-whatsapp">
                 <path d="M12.012 2c-5.506 0-9.989 4.478-9.989 9.984a9.96 9.96 0 001.37 5.028L2 22l5.13-1.346a9.928 9.928 0 004.877 1.277h.005c5.505 0 9.989-4.478 9.99-9.985A9.972 9.972 0 0012.012 2zm5.72 13.917c-.246.696-1.423 1.269-1.95 1.34-.486.066-.994.095-2.203-.393a8.946 8.946 0 01-3.69-2.43 9.773 9.773 0 01-1.89-2.732c-.39-.68-.135-1.04.167-1.36.223-.238.486-.532.658-.77.165-.246.216-.402.324-.67.108-.268.043-.512-.02-.67-.066-.16-.583-1.4-.803-1.925-.213-.514-.452-.455-.62-.464-.15-.008-.323-.008-.495-.008a.952.952 0 00-.687.323c-.237.26-.902.883-.902 2.15 0 1.268.923 2.493 1.053 2.671.13.178 1.817 2.776 4.4 3.887.615.264 1.094.42 1.468.54.618.196 1.18.17 1.626.104.498-.074 1.53-.624 1.745-1.229.215-.604.215-1.12.15-1.229-.064-.11-.237-.17-.487-.294z"/>
               </svg>
               <span data-i18n="btnContactAuthor">Связаться с автором</span>
@@ -159,9 +171,9 @@
 
         <!-- Dashboard view -->
         <div id="cabinetDashboard">
-          <div style="margin-bottom: 24px;">
-            <button id="btnOpenCreateForm" class="btn-filter-apply" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px; height: 20px;">
+          <div class="mb-24">
+            <button id="btnOpenCreateForm" class="btn-filter-apply btn-create-vacancy">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="icon-plus">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
               <span data-i18n="btnOpenForm">Опубликовать вакансию</span>
@@ -179,7 +191,7 @@
         </div>
 
         <!-- Create/Edit Job Form -->
-        <div id="cabinetFormContainer" style="display: none; margin-top: 10px;">
+        <div id="cabinetFormContainer" class="hidden mt-10">
           <div class="form-card">
             <div class="form-title-row">
               <h3 id="formActionTitle" class="form-title" data-i18n="formTitleCreate">Публикация новой вакансии</h3>
@@ -191,7 +203,7 @@
               <div class="form-group" id="group-profession">
                 <label class="form-label"><span data-i18n="labelProfession">Профессия</span> <span class="required">*</span></label>
                 <div class="dropdown-select-container">
-                  <div id="formProfessionTrigger" class="dropdown-trigger">
+                  <div id="formProfessionTrigger" class="dropdown-trigger" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="formProfessionMenu" tabindex="0">
                     <span id="formProfessionText" class="dropdown-trigger-text" data-i18n="placeholderProfession">Выберите профессию</span>
                     <svg class="dropdown-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -199,9 +211,9 @@
                   </div>
                   <div id="formProfessionMenu" class="dropdown-menu">
                     <div class="dropdown-search-wrapper">
-                      <input type="text" id="formProfessionSearch" class="dropdown-search-input" placeholder="Поиск...">
+                      <input type="text" id="formProfessionSearch" class="dropdown-search-input" placeholder="Поиск..." aria-autocomplete="list">
                     </div>
-                    <div id="formProfessionList" class="dropdown-options-list"></div>
+                    <div id="formProfessionList" class="dropdown-options-list" role="listbox"></div>
                   </div>
                 </div>
                 <span class="form-error-msg" data-i18n="errorProfession">Необходимо выбрать профессию.</span>
@@ -212,15 +224,15 @@
                 <label class="form-label"><span data-i18n="labelGender">Требуемый пол</span> <span class="required">*</span></label>
                 <div class="gender-radio-group">
                   <div>
-                    <input type="radio" id="genderMale" name="requiredGender" value="Мужской">
+                    <input type="radio" id="genderMale" name="requiredGender" value="male">
                     <label for="genderMale" class="gender-radio-label" data-i18n="genderMale">Мужской</label>
                   </div>
                   <div>
-                    <input type="radio" id="genderFemale" name="requiredGender" value="Женский">
+                    <input type="radio" id="genderFemale" name="requiredGender" value="female">
                     <label for="genderFemale" class="gender-radio-label" data-i18n="genderFemale">Женский</label>
                   </div>
                   <div>
-                    <input type="radio" id="genderAny" name="requiredGender" value="Неважно" checked>
+                    <input type="radio" id="genderAny" name="requiredGender" value="any" checked>
                     <label for="genderAny" class="gender-radio-label" data-i18n="genderAny">Неважно</label>
                   </div>
                 </div>
@@ -231,26 +243,26 @@
                 <label class="form-label"><span data-i18n="labelAge">Диапазон возраста</span> <span class="required">*</span></label>
                 <div class="form-row-2">
                   <div class="dropdown-select-container">
-                    <div id="formAgeFromTrigger" class="dropdown-trigger">
+                    <div id="formAgeFromTrigger" class="dropdown-trigger" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="formAgeFromMenu" tabindex="0">
                       <span id="formAgeFromText" class="dropdown-trigger-text" data-i18n="ageFrom">От</span>
                       <svg class="dropdown-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                       </svg>
                     </div>
                     <div id="formAgeFromMenu" class="dropdown-menu">
-                      <div id="formAgeFromList" class="dropdown-options-list"></div>
+                      <div id="formAgeFromList" class="dropdown-options-list" role="listbox"></div>
                     </div>
                   </div>
 
                   <div class="dropdown-select-container">
-                    <div id="formAgeToTrigger" class="dropdown-trigger">
+                    <div id="formAgeToTrigger" class="dropdown-trigger" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="formAgeToMenu" tabindex="0">
                       <span id="formAgeToText" class="dropdown-trigger-text" data-i18n="ageTo">До</span>
                       <svg class="dropdown-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                       </svg>
                     </div>
                     <div id="formAgeToMenu" class="dropdown-menu">
-                      <div id="formAgeToList" class="dropdown-options-list"></div>
+                      <div id="formAgeToList" class="dropdown-options-list" role="listbox"></div>
                     </div>
                   </div>
                 </div>
@@ -271,7 +283,7 @@
               <div class="form-group" id="group-city">
                 <label class="form-label"><span data-i18n="labelCity">Город</span> <span class="required">*</span></label>
                 <div class="dropdown-select-container">
-                  <div id="formCityTrigger" class="dropdown-trigger">
+                  <div id="formCityTrigger" class="dropdown-trigger" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="formCityMenu" tabindex="0">
                     <span id="formCityText" class="dropdown-trigger-text" data-i18n="placeholderCity">Выберите город</span>
                     <svg class="dropdown-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -279,9 +291,9 @@
                   </div>
                   <div id="formCityMenu" class="dropdown-menu">
                     <div class="dropdown-search-wrapper">
-                      <input type="text" id="formCitySearch" class="dropdown-search-input" placeholder="Поиск...">
+                      <input type="text" id="formCitySearch" class="dropdown-search-input" placeholder="Поиск..." aria-autocomplete="list">
                     </div>
-                    <div id="formCityList" class="dropdown-options-list"></div>
+                    <div id="formCityList" class="dropdown-options-list" role="listbox"></div>
                   </div>
                 </div>
                 <span class="form-error-msg" data-i18n="errorCity">Необходимо выбрать город.</span>
@@ -289,7 +301,7 @@
 
               <!-- Address & Remote -->
               <div class="form-group" id="group-address">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="flex-space-between">
                   <label class="form-label" data-i18n="labelAddress">Адрес <span class="required">*</span></label>
                   <div class="checkbox-option-wrapper">
                     <input type="checkbox" id="formIsRemote" class="custom-checkbox">
@@ -302,14 +314,14 @@
 
               <!-- Payment & Negotiable -->
               <div class="form-group" id="group-payment">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div class="flex-space-between">
                   <label class="form-label" data-i18n="labelPayment">Оплата (₸) <span class="required">*</span></label>
                   <div class="checkbox-option-wrapper">
                     <input type="checkbox" id="formIsNegotiable" class="custom-checkbox">
                     <label for="formIsNegotiable" class="checkbox-label" data-i18n="labelNegotiable">Договорная</label>
                   </div>
                 </div>
-                <input type="text" id="formPayment" class="form-input-text" placeholder="Например: 150 000">
+                <input type="text" id="formPayment" class="form-input-text" placeholder="Например: 150 000" inputmode="numeric" pattern="[0-9]*">
                 <span class="form-error-msg" data-i18n="errorPayment">Сумма должна быть от 1 000 ₸ до 5 000 000 ₸.</span>
               </div>
 
@@ -318,7 +330,7 @@
                 <label class="form-label" data-i18n="labelPhone">Номер телефона WhatsApp <span class="required">*</span></label>
                 <div class="masked-phone-wrapper">
                   <span class="phone-prefix">+7</span>
-                  <input type="tel" id="formPhone" class="form-input-text phone-masked-input" placeholder="777 123 45 67" maxlength="12">
+                  <input type="tel" id="formPhone" class="form-input-text phone-masked-input" placeholder="777 123 45 67" maxlength="12" inputmode="tel" pattern="[0-9]*">
                 </div>
                 <span class="form-error-msg" data-i18n="errorPhone">Введите полный номер телефона (10 цифр).</span>
               </div>
@@ -326,7 +338,7 @@
               <!-- Action buttons -->
               <div class="form-actions-row">
                 <button type="button" id="btnFormPreview" class="btn-form-preview" data-i18n="btnPreview" disabled>Предпросмотр</button>
-                <button type="button" id="btnFormCancel" class="btn-preview-edit" style="width: 100%;" data-i18n="btnCancel">Отмена</button>
+                <button type="button" id="btnFormCancel" class="btn-preview-edit w-full" data-i18n="btnCancel">Отмена</button>
               </div>
 
             </form>
@@ -334,7 +346,7 @@
         </div>
 
         <!-- Preview View (Visible during preview state before publish) -->
-        <div id="cabinetPreviewContainer" style="display: none; margin-top: 10px;">
+        <div id="cabinetPreviewContainer" class="hidden mt-10">
           <div class="preview-screen">
             <div class="preview-badge" data-i18n="previewTitle">Предварительный просмотр</div>
             
@@ -360,7 +372,7 @@
     <div class="filter-header">
       <h3 class="filter-title" data-i18n="filterTitle">Фильтры</h3>
       <div id="btnCloseFilter" class="btn-close-filter">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 20px; height: 20px;">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
         </svg>
       </div>
@@ -382,7 +394,7 @@
       <div class="filter-group">
         <label class="filter-label" data-i18n="filterProfessionLabel">Поиск по профессиям</label>
         <div class="dropdown-select-container">
-          <div id="filterProfessionTrigger" class="dropdown-trigger">
+          <div id="filterProfessionTrigger" class="dropdown-trigger" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="filterProfessionMenu" tabindex="0">
             <span id="filterProfessionText" class="dropdown-trigger-text" data-i18n="filterProfessionPlaceholder">Выбрать несколько</span>
             <svg class="dropdown-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -390,9 +402,9 @@
           </div>
           <div id="filterProfessionMenu" class="dropdown-menu">
             <div class="dropdown-search-wrapper">
-              <input type="text" id="filterProfessionSearch" class="dropdown-search-input" placeholder="Введите профессию...">
+              <input type="text" id="filterProfessionSearch" class="dropdown-search-input" placeholder="Введите профессию..." aria-autocomplete="list">
             </div>
-            <div id="filterProfessionList" class="dropdown-options-list"></div>
+            <div id="filterProfessionList" class="dropdown-options-list" role="listbox"></div>
           </div>
         </div>
         <div id="filterProfessionTags" class="filter-tags-list"></div>
@@ -402,7 +414,7 @@
       <div class="filter-group">
         <label class="filter-label" data-i18n="filterCityLabel">Поиск по городам</label>
         <div class="dropdown-select-container">
-          <div id="filterCityTrigger" class="dropdown-trigger">
+          <div id="filterCityTrigger" class="dropdown-trigger" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="filterCityMenu" tabindex="0">
             <span id="filterCityText" class="dropdown-trigger-text" data-i18n="filterCityPlaceholder">Выбрать города</span>
             <svg class="dropdown-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -410,9 +422,9 @@
           </div>
           <div id="filterCityMenu" class="dropdown-menu">
             <div class="dropdown-search-wrapper">
-              <input type="text" id="filterCitySearch" class="dropdown-search-input" placeholder="Введите город...">
+              <input type="text" id="filterCitySearch" class="dropdown-search-input" placeholder="Введите город..." aria-autocomplete="list">
             </div>
-            <div id="filterCityList" class="dropdown-options-list"></div>
+            <div id="filterCityList" class="dropdown-options-list" role="listbox"></div>
           </div>
         </div>
         <div id="filterCityTags" class="filter-tags-list"></div>
@@ -422,7 +434,7 @@
       <div class="filter-group">
         <label class="filter-label" data-i18n="filterExcludeLabel">Исключить профессии</label>
         <div class="dropdown-select-container">
-          <div id="filterExcludeTrigger" class="dropdown-trigger">
+          <div id="filterExcludeTrigger" class="dropdown-trigger" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="filterExcludeMenu" tabindex="0">
             <span id="filterExcludeText" class="dropdown-trigger-text" data-i18n="filterExcludePlaceholder">Какие вакансии скрыть</span>
             <svg class="dropdown-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
@@ -430,9 +442,9 @@
           </div>
           <div id="filterExcludeMenu" class="dropdown-menu">
             <div class="dropdown-search-wrapper">
-              <input type="text" id="filterExcludeSearch" class="dropdown-search-input" placeholder="Поиск для исключения...">
+              <input type="text" id="filterExcludeSearch" class="dropdown-search-input" placeholder="Поиск для исключения..." aria-autocomplete="list">
             </div>
-            <div id="filterExcludeList" class="dropdown-options-list"></div>
+            <div id="filterExcludeList" class="dropdown-options-list" role="listbox"></div>
           </div>
         </div>
         <div id="filterExcludeTags" class="filter-tags-list"></div>
@@ -455,6 +467,16 @@
           </label>
         </div>
       </div>
+
+      <!-- Gender filter -->
+      <div class="filter-group">
+        <label class="filter-label" data-i18n="filterGenderLabel">Пол соискателя</label>
+        <div class="gender-segment-filter" id="filterGenderGroup">
+          <button type="button" class="gender-seg-btn active" data-gender="all" data-i18n="filterGenderAll">Все</button>
+          <button type="button" class="gender-seg-btn" data-gender="male" data-i18n="filterGenderMale">Мужчина</button>
+          <button type="button" class="gender-seg-btn" data-gender="female" data-i18n="filterGenderFemale">Женщина</button>
+        </div>
+      </div>
     </div>
     
     <div class="filter-footer">
@@ -467,7 +489,7 @@
   <div id="authModal" class="modal-container">
     <div class="modal-content">
       <div id="btnAuthClose" class="modal-close-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 16px; height: 16px;">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
         </svg>
       </div>
@@ -480,8 +502,8 @@
       <p id="authModalText" class="modal-description" data-i18n="authModalDesc">Войдите в систему, чтобы продолжить. Это быстро и безопасно.</p>
 
       <!-- Google OAuth Button -->
-      <button id="btnGoogleSignIn" class="btn-google-auth" style="margin-top: 20px;">
-        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="width:22px;height:22px;flex-shrink:0;">
+      <button id="btnGoogleSignIn" class="btn-google-auth mt-20">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
           <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
           <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
@@ -490,20 +512,21 @@
         <span data-i18n="btnGoogleAuth">Войти через Google</span>
       </button>
 
-      <p style="margin-top: 14px; font-size: 12px; color: var(--color-text-muted); text-align: center;" data-i18n="authModalSecurity">Безопасный вход. Мы не храним ваш пароль.</p>
+      <p class="modal-footnote" data-i18n="authModalSecurity">Безопасный вход. Мы не храним ваш пароль.</p>
     </div>
   </div>
 
   <!-- VACANCY DETAIL MODAL -->
   <div id="detailModal" class="modal-container">
     <div class="modal-content vacancy-detail-modal-content">
-      <div id="btnDetailClose" class="modal-close-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" style="width: 16px; height: 16px;">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </div>
-      
+
+      <!-- Top row: close btn (left) + profession title (center-ish) + favorite btn (right) -->
       <div class="vacancy-detail-title-row">
+        <button id="btnDetailClose" class="detail-close-btn" aria-label="Закрыть">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
         <h3 id="detailProfession" class="vacancy-profession">Программист</h3>
         <button id="detailFavoriteBtn" class="vacancy-favorite-btn">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
@@ -520,6 +543,7 @@
         <!-- description text -->
       </div>
 
+      <!-- Meta row: only location + time. detailCriteria row REMOVED (data shown in badges above) -->
       <div class="vacancy-detail-meta">
         <div class="vacancy-detail-meta-item">
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
@@ -533,12 +557,6 @@
             <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span id="detailTime">Опубликовано: Сегодня</span>
-        </div>
-        <div class="vacancy-detail-meta-item">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94-3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z" />
-          </svg>
-          <span id="detailCriteria">Пол: Неважно | Возраст: 18 - 35</span>
         </div>
       </div>
 
@@ -578,8 +596,8 @@
   </nav>
 
   <!-- Load script files -->
-  <script src="translations.js"></script>
-  <script src="data.js"></script>
-  <script src="app.js"></script>
+  <script src="translations.js?v=2.1.0"></script>
+  <script src="data.js?v=2.1.0"></script>
+  <script src="app.js?v=2.1.0"></script>
 </body>
 </html>
