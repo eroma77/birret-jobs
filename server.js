@@ -135,6 +135,9 @@ async function initDb() {
         created_at  TIMESTAMP WITH TIME ZONE NOT NULL,
         author_id   VARCHAR(100) NOT NULL
       );
+
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS job_type VARCHAR(20) DEFAULT 'permanent';
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS payment_period VARCHAR(20) DEFAULT 'month';
     `);
     console.log("Postgres Database 'jobs' table initialized successfully.");
   } catch (err) {
@@ -191,7 +194,9 @@ const mapRowToJob = (row) => ({
   isNegotiable: row.is_negotiable,
   phone:        row.phone,
   createdAt:    row.created_at,
-  authorId:     row.author_id
+  authorId:     row.author_id,
+  jobType:      row.job_type || 'permanent',
+  paymentPeriod:row.payment_period || 'month'
 });
 
 // ---------------------------------------------------------------------------
@@ -286,6 +291,17 @@ app.post('/api/jobs', async (req, res) => {
     return res.status(400).json({ code: 'INVALID_GENDER', error: 'Invalid gender value' });
   }
 
+  const jobType = job.jobType || job.type;
+  if (jobType !== 'permanent' && jobType !== 'project') {
+    return res.status(400).json({ code: 'INVALID_JOB_TYPE', error: 'Job type must be permanent or project' });
+  }
+
+  const paymentPeriod = job.paymentPeriod || 'month';
+  const allowedPeriods = ['month', 'day', 'hour', 'shift'];
+  if (!allowedPeriods.includes(paymentPeriod)) {
+    return res.status(400).json({ code: 'INVALID_PAYMENT_PERIOD', error: 'Payment period must be month, day, hour, or shift' });
+  }
+
   const ageFrom = Number(job.ageFrom);
   const ageTo   = Number(job.ageTo);
   if (isNaN(ageFrom) || isNaN(ageTo) || ageFrom < 15 || ageTo > 50 || ageFrom > ageTo) {
@@ -330,8 +346,8 @@ app.post('/api/jobs', async (req, res) => {
     INSERT INTO jobs (
       id, profession, gender, age_from, age_to, description,
       city, address, is_remote, payment, is_negotiable, phone,
-      created_at, author_id
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      created_at, author_id, job_type, payment_period
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
     ON CONFLICT (id) DO UPDATE SET
       profession    = EXCLUDED.profession,
       gender        = EXCLUDED.gender,
@@ -345,7 +361,9 @@ app.post('/api/jobs', async (req, res) => {
       is_negotiable = EXCLUDED.is_negotiable,
       phone         = EXCLUDED.phone,
       created_at    = EXCLUDED.created_at,
-      author_id     = EXCLUDED.author_id
+      author_id     = EXCLUDED.author_id,
+      job_type      = EXCLUDED.job_type,
+      payment_period = EXCLUDED.payment_period
     RETURNING *;
   `;
 
@@ -363,7 +381,9 @@ app.post('/api/jobs', async (req, res) => {
     isNegotiable,
     phone,
     createdAt,
-    user.id         // always server-enforced, never from client body
+    user.id,        // always server-enforced, never from client body
+    jobType,
+    paymentPeriod
   ];
 
   try {

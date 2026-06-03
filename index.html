@@ -238,6 +238,22 @@
                 </div>
               </div>
 
+              <!-- Job Type -->
+              <div class="form-group" id="group-jobType">
+                <label class="form-label"><span data-i18n="labelJobType">Тип работы</span> <span class="required">*</span></label>
+                <div class="gender-radio-group">
+                  <div>
+                    <input type="radio" id="jobTypePermanent" name="requiredJobType" value="permanent">
+                    <label for="jobTypePermanent" class="gender-radio-label" data-i18n="jobTypePermanent">Постоянная работа</label>
+                  </div>
+                  <div>
+                    <input type="radio" id="jobTypeProject" name="requiredJobType" value="project">
+                    <label for="jobTypeProject" class="gender-radio-label" data-i18n="jobTypeProject">Проектная работа</label>
+                  </div>
+                </div>
+                <span class="form-error-msg" data-i18n="errorJobType">Выберите тип работы.</span>
+              </div>
+
               <!-- Age -->
               <div class="form-group" id="group-age">
                 <label class="form-label"><span data-i18n="labelAge">Диапазон возраста</span> <span class="required">*</span></label>
@@ -321,7 +337,15 @@
                     <label for="formIsNegotiable" class="checkbox-label" data-i18n="labelNegotiable">Договорная</label>
                   </div>
                 </div>
-                <input type="text" id="formPayment" class="form-input-text" placeholder="Например: 150 000" inputmode="numeric" pattern="[0-9]*">
+                <div class="payment-input-row" style="display: grid; grid-template-columns: 1fr 130px; gap: 8px;">
+                  <input type="text" id="formPayment" class="form-input-text" placeholder="Например: 150 000" inputmode="numeric" pattern="[0-9]*">
+                  <select id="formPaymentPeriod" class="sort-select" style="padding: 10px 12px; background-position: right 10px center; height: 100%;">
+                    <option value="month" data-i18n="periodMonth" selected>в месяц</option>
+                    <option value="day" data-i18n="periodDay">в день</option>
+                    <option value="hour" data-i18n="periodHour">в час</option>
+                    <option value="shift" data-i18n="periodShift">за смену</option>
+                  </select>
+                </div>
                 <span class="form-error-msg" data-i18n="errorPayment">Сумма должна быть от 1 000 ₸ до 5 000 000 ₸.</span>
               </div>
 
@@ -476,6 +500,50 @@
           <button type="button" class="gender-seg-btn" data-gender="male" data-i18n="filterGenderMale">Мужчина</button>
           <button type="button" class="gender-seg-btn" data-gender="female" data-i18n="filterGenderFemale">Женщина</button>
         </div>
+      </div>
+
+      <!-- Job Type filter -->
+      <div class="filter-group">
+        <label class="filter-label" data-i18n="filterJobTypeLabel">Тип работы</label>
+        <div class="gender-segment-filter" id="filterJobTypeGroup">
+          <button type="button" class="gender-seg-btn active" data-jobtype="all" data-i18n="filterJobTypeAll">Все</button>
+          <button type="button" class="gender-seg-btn" data-jobtype="permanent" data-i18n="filterJobTypePermanent">Постоянная</button>
+          <button type="button" class="gender-seg-btn" data-jobtype="project" data-i18n="filterJobTypeProject">Проектная</button>
+        </div>
+      </div>
+
+      <!-- Payment Period filter -->
+      <div class="filter-group">
+        <label class="filter-label" data-i18n="filterPaymentPeriodLabel">Период оплаты</label>
+        <div class="dropdown-select-container">
+          <div id="filterPaymentPeriodTrigger" class="dropdown-trigger" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="filterPaymentPeriodMenu" tabindex="0">
+            <span id="filterPaymentPeriodText" class="dropdown-trigger-text" data-i18n="filterPaymentPeriodPlaceholder">Любой период</span>
+            <svg class="dropdown-arrow" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </div>
+          <div id="filterPaymentPeriodMenu" class="dropdown-menu">
+            <div id="filterPaymentPeriodList" class="dropdown-options-list" role="listbox">
+              <div class="dropdown-option" role="option" data-value="month" tabindex="0">
+                <span data-i18n="periodMonth">в месяц</span>
+                <svg class="checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+              </div>
+              <div class="dropdown-option" role="option" data-value="day" tabindex="0">
+                <span data-i18n="periodDay">в день</span>
+                <svg class="checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+              </div>
+              <div class="dropdown-option" role="option" data-value="hour" tabindex="0">
+                <span data-i18n="periodHour">в час</span>
+                <svg class="checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+              </div>
+              <div class="dropdown-option" role="option" data-value="shift" tabindex="0">
+                <span data-i18n="periodShift">за смену</span>
+                <svg class="checkbox-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="filterPaymentPeriodTags" class="filter-tags-list"></div>
       </div>
     </div>
     

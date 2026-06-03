@@ -18,11 +18,14 @@ document.addEventListener("DOMContentLoaded", () => {
       excludeProfessions: [],
       age: null,
       remoteOnly: false,
-      gender: "all"
+      gender: "all",
+      jobType: "all",
+      paymentPeriods: []
     },
     formState: {
       profession: "",
       gender: "any",
+      jobType: "",
       ageFrom: 18,
       ageTo: 30,
       description: "",
@@ -30,6 +33,7 @@ document.addEventListener("DOMContentLoaded", () => {
       address: "",
       isRemote: false,
       payment: "",
+      paymentPeriod: "month",
       isNegotiable: false,
       phone: ""
     },
@@ -1304,6 +1308,27 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
+    const jobTypeRadios = document.getElementsByName("requiredJobType");
+    jobTypeRadios.forEach(radio => {
+      radio.addEventListener("change", (e) => {
+        if (e.target.checked) {
+          state.formState.jobType = e.target.value;
+          state.isDirty = true;
+          validateField("jobType");
+          checkFormValidity();
+        }
+      });
+    });
+
+    const formPaymentPeriod = document.getElementById("formPaymentPeriod");
+    if (formPaymentPeriod) {
+      formPaymentPeriod.addEventListener("change", (e) => {
+        state.formState.paymentPeriod = e.target.value;
+        state.isDirty = true;
+        checkFormValidity();
+      });
+    }
+
     window.addEventListener("beforeunload", (e) => {
       if (state.isDirty) {
         e.preventDefault();
@@ -1321,6 +1346,9 @@ document.addEventListener("DOMContentLoaded", () => {
     switch (fieldName) {
       case "profession":
         isValid = !!state.formState.profession;
+        break;
+      case "jobType":
+        isValid = state.formState.jobType === "permanent" || state.formState.jobType === "project";
         break;
       case "age":
         isValid = state.formState.ageFrom >= 15 && 
@@ -1376,7 +1404,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function checkFormValidity() {
-    const fields = ["profession", "age", "description", "city", "address", "payment", "phone"];
+    const fields = ["profession", "jobType", "age", "description", "city", "address", "payment", "phone"];
     let allValid = true;
     
     fields.forEach(field => {
@@ -1384,6 +1412,9 @@ document.addEventListener("DOMContentLoaded", () => {
       switch (field) {
         case "profession":
           silentValid = !!state.formState.profession;
+          break;
+        case "jobType":
+          silentValid = state.formState.jobType === "permanent" || state.formState.jobType === "project";
           break;
         case "age":
           silentValid = state.formState.ageFrom >= 15 && state.formState.ageTo <= 50 && state.formState.ageFrom <= state.formState.ageTo;
@@ -1417,6 +1448,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.formState = {
       profession: "",
       gender: "any",
+      jobType: "",
       ageFrom: 18,
       ageTo: 30,
       description: "",
@@ -1424,6 +1456,7 @@ document.addEventListener("DOMContentLoaded", () => {
       address: "",
       isRemote: false,
       payment: "",
+      paymentPeriod: "month",
       isNegotiable: false,
       phone: ""
     };
@@ -1431,6 +1464,8 @@ document.addEventListener("DOMContentLoaded", () => {
     state.isDirty = false;
 
     document.getElementById("jobForm").reset();
+    const periodSelect = document.getElementById("formPaymentPeriod");
+    if (periodSelect) periodSelect.value = "month";
     document.getElementById("formProfessionText").textContent = "Выберите профессию";
     document.getElementById("formProfessionText").classList.remove("has-value");
     document.getElementById("formCityText").textContent = "Выберите город";
@@ -1466,6 +1501,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.formState = {
       profession: job.profession,
       gender: job.gender,
+      jobType: job.jobType || 'permanent',
       ageFrom: job.ageFrom,
       ageTo: job.ageTo,
       description: job.description,
@@ -1473,6 +1509,7 @@ document.addEventListener("DOMContentLoaded", () => {
       address: job.address,
       isRemote: job.isRemote,
       payment: job.payment,
+      paymentPeriod: job.paymentPeriod || 'month',
       isNegotiable: job.isNegotiable,
       phone: job.phone
     };
@@ -1486,6 +1523,14 @@ document.addEventListener("DOMContentLoaded", () => {
     genderRadios.forEach(radio => {
       if (radio.value === job.gender) radio.checked = true;
     });
+
+    const jobTypeRadios = document.getElementsByName("requiredJobType");
+    jobTypeRadios.forEach(radio => {
+      if (radio.value === (job.jobType || 'permanent')) radio.checked = true;
+    });
+
+    const periodSelect = document.getElementById("formPaymentPeriod");
+    if (periodSelect) periodSelect.value = job.paymentPeriod || 'month';
 
     document.getElementById("formAgeFromText").textContent = `От ${job.ageFrom}`;
     document.getElementById("formAgeFromText").classList.add("has-value");
@@ -1557,6 +1602,7 @@ document.addEventListener("DOMContentLoaded", () => {
       id: state.editingJobId || "preview-id",
       profession: state.formState.profession,
       gender: state.formState.gender,
+      jobType: state.formState.jobType,
       ageFrom: state.formState.ageFrom,
       ageTo: state.formState.ageTo,
       description: state.formState.description,
@@ -1564,6 +1610,7 @@ document.addEventListener("DOMContentLoaded", () => {
       address: state.formState.address,
       isRemote: state.formState.isRemote,
       payment: state.formState.payment ? Number(state.formState.payment) : 0,
+      paymentPeriod: state.formState.paymentPeriod,
       isNegotiable: state.formState.isNegotiable,
       phone: state.formState.phone,
       createdAt: new Date().toISOString()
@@ -1593,6 +1640,7 @@ document.addEventListener("DOMContentLoaded", () => {
       id: state.editingJobId || "job-" + Math.random().toString(36).substr(2, 9),
       profession: state.formState.profession,
       gender: state.formState.gender,
+      jobType: state.formState.jobType,
       ageFrom: state.formState.ageFrom,
       ageTo: state.formState.ageTo,
       description: cleanDesc,
@@ -1600,6 +1648,7 @@ document.addEventListener("DOMContentLoaded", () => {
       address: state.formState.isRemote ? "" : state.formState.address,
       isRemote: state.formState.isRemote,
       payment: state.formState.isNegotiable ? 0 : Number(state.formState.payment),
+      paymentPeriod: state.formState.paymentPeriod,
       isNegotiable: state.formState.isNegotiable,
       phone: state.formState.phone,
       createdAt: state.editingJobId
@@ -1779,6 +1828,14 @@ document.addEventListener("DOMContentLoaded", () => {
       result = result.filter(job => job.gender === "male" || job.gender === "any");
     } else if (state.filters.gender === "female") {
       result = result.filter(job => job.gender === "female" || job.gender === "any");
+    }
+
+    if (state.filters.jobType && state.filters.jobType !== "all") {
+      result = result.filter(job => job.jobType === state.filters.jobType);
+    }
+
+    if (state.filters.paymentPeriods && state.filters.paymentPeriods.length > 0) {
+      result = result.filter(job => state.filters.paymentPeriods.includes(job.paymentPeriod || 'month'));
     }
 
     if (state.filters.age !== null && state.filters.age !== "") {
@@ -1968,12 +2025,17 @@ document.addEventListener("DOMContentLoaded", () => {
   function createVacancyCardHTML(job, isPreview = false) {
     const isFav = state.favorites.includes(job.id);
     const timeLabel = getJobDateLabel(job.createdAt);
+    const periodKey = `period${(job.paymentPeriod || 'month').charAt(0).toUpperCase() + (job.paymentPeriod || 'month').slice(1)}`;
+    const payPeriodLabel = t(periodKey);
     const payLabel = job.isNegotiable 
       ? t("negotiablePrice") 
-      : `${String(job.payment).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ₸`;
+      : `${String(job.payment).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ₸ / ${payPeriodLabel}`;
     const remoteLabel = job.isRemote 
       ? t("remoteJob") 
       : `${escapeHTML(window.translateCity(job.city, window.currentLanguage))}${job.address ? `, ${escapeHTML(job.address)}` : ''}`;
+    
+    const typeKey = job.jobType === 'project' ? 'jobTypeProject' : 'jobTypePermanent';
+    const typeBadge = `<span class="badge badge-job-type">${t(typeKey)}</span>`;
     
     return `
       <div class="vacancy-card-header">
@@ -1990,6 +2052,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="vacancy-badges">
         <span class="badge badge-payment">${payLabel}</span>
         ${job.isRemote ? `<span class="badge badge-remote">${t("remoteJob")}</span>` : ''}
+        ${typeBadge}
         <span class="badge">${t("cardBadgeAge")}: ${job.ageFrom} - ${job.ageTo} ${t("cardBadgeAgeUnit")}</span>
         <span class="badge">${t("cardBadgeGender")}: ${translateGender(job.gender)}</span>
       </div>
@@ -2085,13 +2148,19 @@ document.addEventListener("DOMContentLoaded", () => {
     favBtn.setAttribute("data-favorite-id", job.id);
     favBtn.classList.toggle("active", state.favorites.includes(job.id));
     
+    const periodKey = `period${(job.paymentPeriod || 'month').charAt(0).toUpperCase() + (job.paymentPeriod || 'month').slice(1)}`;
+    const payPeriodLabel = t(periodKey);
     const payLabel = job.isNegotiable 
       ? t("negotiablePrice") 
-      : `${String(job.payment).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ₸`;
+      : `${String(job.payment).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ₸ / ${payPeriodLabel}`;
+      
+    const typeKey = job.jobType === 'project' ? 'jobTypeProject' : 'jobTypePermanent';
+    const typeBadge = `<span class="badge badge-job-type">${t(typeKey)}</span>`;
       
     document.getElementById("detailBadges").innerHTML = `
       <span class="badge badge-payment">${payLabel}</span>
       ${job.isRemote ? `<span class="badge badge-remote">${t("remoteJob")}</span>` : ""}
+      ${typeBadge}
       <span class="badge">${t("cardBadgeAge")}: ${job.ageFrom} - ${job.ageTo} ${t("cardBadgeAgeUnit")}</span>
       <span class="badge">${t("cardBadgeGender")}: ${translateGender(job.gender)}</span>
     `;
@@ -2210,6 +2279,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (state.filters.age !== null && state.filters.age !== "") count++;
     if (state.filters.remoteOnly) count++;
     if (state.filters.gender && state.filters.gender !== "all") count++;
+    if (state.filters.jobType && state.filters.jobType !== "all") count++;
+    if (state.filters.paymentPeriods && state.filters.paymentPeriods.length > 0) count++;
 
     if (count > 0) {
       badge.textContent = count;
@@ -2271,7 +2342,9 @@ document.addEventListener("DOMContentLoaded", () => {
         excludeProfessions: [],
         age: null,
         remoteOnly: false,
-        gender: "all"
+        gender: "all",
+        jobType: "all",
+        paymentPeriods: []
       };
 
       document.getElementById("filterSort").value = "newest";
@@ -2281,6 +2354,15 @@ document.addEventListener("DOMContentLoaded", () => {
       document.querySelectorAll("#filterGenderGroup .gender-seg-btn").forEach(b => {
         b.classList.toggle("active", b.dataset.gender === "all");
       });
+
+      document.querySelectorAll("#filterJobTypeGroup .gender-seg-btn").forEach(b => {
+        b.classList.toggle("active", b.dataset.jobtype === "all");
+      });
+
+      document.querySelectorAll("#filterPaymentPeriodMenu .dropdown-option").forEach(opt => {
+        opt.classList.remove("selected");
+      });
+      updatePaymentPeriodTriggerText();
 
       syncMultiSelectTags("filterProfession");
       syncMultiSelectTags("filterCity");
@@ -2407,6 +2489,63 @@ document.addEventListener("DOMContentLoaded", () => {
       document.getElementById("offlineBanner").classList.add("active");
       showToast(window.TRANSLATIONS[window.currentLanguage].toastConnectionLost, "error");
     });
+
+    // Job Type filter buttons handling
+    document.querySelectorAll("#filterJobTypeGroup .gender-seg-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("#filterJobTypeGroup .gender-seg-btn").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        state.filters.jobType = btn.dataset.jobtype;
+      });
+    });
+
+    // Payment Period filter dropdown toggle
+    const filterPaymentPeriodTrigger = document.getElementById("filterPaymentPeriodTrigger");
+    const filterPaymentPeriodMenu = document.getElementById("filterPaymentPeriodMenu");
+    if (filterPaymentPeriodTrigger && filterPaymentPeriodMenu) {
+      filterPaymentPeriodTrigger.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeAllDropdowns("filterPaymentPeriodMenu");
+        const isOpen = filterPaymentPeriodMenu.classList.toggle("show");
+        filterPaymentPeriodTrigger.classList.toggle("open", isOpen);
+        filterPaymentPeriodTrigger.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      });
+    }
+
+    // Payment Period filter option clicks
+    const paymentPeriodOptions = document.querySelectorAll("#filterPaymentPeriodList .dropdown-option");
+    paymentPeriodOptions.forEach(option => {
+      option.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const val = option.dataset.value;
+        const idx = state.filters.paymentPeriods.indexOf(val);
+        if (idx !== -1) {
+          state.filters.paymentPeriods.splice(idx, 1);
+          option.classList.remove("selected");
+        } else {
+          state.filters.paymentPeriods.push(val);
+          option.classList.add("selected");
+        }
+        updatePaymentPeriodTriggerText();
+      });
+    });
+  }
+
+  function updatePaymentPeriodTriggerText() {
+    const triggerText = document.getElementById("filterPaymentPeriodText");
+    if (!triggerText) return;
+
+    if (state.filters.paymentPeriods && state.filters.paymentPeriods.length > 0) {
+      const translatedList = state.filters.paymentPeriods.map(p => {
+        const periodKey = `period${p.charAt(0).toUpperCase() + p.slice(1)}`;
+        return t(periodKey);
+      });
+      triggerText.textContent = translatedList.join(", ");
+      triggerText.classList.add("has-value");
+    } else {
+      triggerText.textContent = t("filterPaymentPeriodPlaceholder");
+      triggerText.classList.remove("has-value");
+    }
   }
 
   // --- RENDER SELECTED FILTERS AS REMOVABLE TAGS ---
@@ -2450,6 +2589,16 @@ document.addEventListener("DOMContentLoaded", () => {
             document.querySelectorAll("#filterGenderGroup .gender-seg-btn").forEach(b => {
               b.classList.toggle("active", b.dataset.gender === "all");
             });
+          } else if (type === "jobType") {
+            state.filters.jobType = "all";
+            document.querySelectorAll("#filterJobTypeGroup .gender-seg-btn").forEach(b => {
+              b.classList.toggle("active", b.dataset.jobtype === "all");
+            });
+          } else if (type === "paymentPeriod") {
+            state.filters.paymentPeriods = state.filters.paymentPeriods.filter(p => p !== value);
+            const option = document.querySelector(`#filterPaymentPeriodMenu .dropdown-option[data-value="${value}"]`);
+            if (option) option.classList.remove("selected");
+            updatePaymentPeriodTriggerText();
           }
 
           updateFilterBadge();
@@ -2477,6 +2626,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const genderText = state.filters.gender === "male" ? t("filterGenderMale") : t("filterGenderFemale");
       addTag(genderText, "gender");
     }
+    if (state.filters.jobType && state.filters.jobType !== "all") {
+      const typeText = state.filters.jobType === "permanent" ? t("filterJobTypePermanent") : t("filterJobTypeProject");
+      addTag(`${t("tagPrefixJobType")}${typeText}`, "jobType");
+    }
+    state.filters.paymentPeriods.forEach(p => {
+      const periodKey = `period${p.charAt(0).toUpperCase() + p.slice(1)}`;
+      addTag(`${t("tagPrefixPaymentPeriod")}${t(periodKey)}`, "paymentPeriod", p);
+    });
   }
 
   init();
