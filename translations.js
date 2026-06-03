@@ -118,7 +118,7 @@ window.TRANSLATIONS = {
     myJobsEmpty: "Вы еще не опубликовали ни одной вакансии.",
     toastAuthServerConnectError: "Ошибка подключения к серверу авторизации.",
     toastPublishError: "Ошибка при публикации на сервере.",
-    toastDeleteError: "Не удалось удалить вакансию. Попробуйте снова."
+    toastDeleteError: "Не удалось удалить вакансию. Попробуйте снова.",
     
     // Date formats
     today: "Сегодня",
@@ -246,7 +246,7 @@ window.TRANSLATIONS = {
     myJobsEmpty: "Сіз әлі ешқандай бос жұмыс орнын жарияламадыңыз.",
     toastAuthServerConnectError: "Авторизация серверіне қосылу қатесі.",
     toastPublishError: "Серверде жариялау қатесі.",
-    toastDeleteError: "Вакансияны өшіру мүмкін болмады. Қайталап көріңіз."
+    toastDeleteError: "Вакансияны өшіру мүмкін болмады. Қайталап көріңіз.",
     
     // Date formats
     today: "Бүгін",

@@ -67,12 +67,17 @@ async function initDb() {
   try {
     await pool.query(createTableQuery);
     console.log("Postgres Database 'jobs' table initialized successfully.");
-    
-    // Enable Row Level Security to block any direct client-side PostgREST manipulations
+  } catch (err) {
+    console.error("Error initializing Database table:", err);
+  }
+
+  // Enable Row Level Security separately — may be skipped if already enabled or insufficient permissions via pooler
+  try {
     await pool.query("ALTER TABLE jobs ENABLE ROW LEVEL SECURITY;");
     console.log("Row Level Security (RLS) enabled on 'jobs' table.");
   } catch (err) {
-    console.error("Error initializing Database table or enabling RLS:", err);
+    // Non-fatal: RLS may already be enabled, or the pooler user lacks ALTER permissions
+    console.warn("RLS enablement skipped (may already be active):", err.message);
   }
 }
 
