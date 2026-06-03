@@ -193,8 +193,8 @@ app.post('/api/jobs', async (req, res) => {
   const isNegotiable = !!job.isNegotiable;
   if (!isNegotiable) {
     const payment = Number(job.payment);
-    if (isNaN(payment) || payment < 1000 || payment > 1000000) {
-      return res.status(400).json({ error: "Оплата должна быть от 1 000 ₸ до 1 000 000 ₸" });
+    if (isNaN(payment) || payment < 1000 || payment > 5000000) {
+      return res.status(400).json({ error: "Оплата должна быть от 1 000 ₸ до 5 000 000 ₸" });
     }
   }
   const phone = (job.phone || "").replace(/\D/g, "");
@@ -238,7 +238,7 @@ app.post('/api/jobs', async (req, res) => {
     job.city,
     job.isRemote ? "" : job.address,
     job.isRemote,
-    job.isNegotiable ? 0 : Number(job.payment),
+    job.isNegotiable ? 0 : Math.round(Number(job.payment) / 1000) * 1000,
     job.isNegotiable,
     job.phone,
     job.createdAt,

@@ -883,9 +883,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const digitsOnly = val.replace(/\D/g, "");
       
       if (digitsOnly) {
-        const rawNum = parseInt(digitsOnly);
+        let rawNum = parseInt(digitsOnly);
+        if (rawNum > 5000000) {
+          rawNum = 5000000;
+        }
         state.formState.payment = rawNum;
-        e.target.value = digitsOnly.replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+        e.target.value = String(rawNum).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
       } else {
         state.formState.payment = "";
         e.target.value = "";
@@ -894,6 +897,17 @@ document.addEventListener("DOMContentLoaded", () => {
       state.isDirty = true;
       validateField("payment");
       checkFormValidity();
+    });
+
+    formPayment.addEventListener("blur", (e) => {
+      const val = state.formState.payment;
+      if (val && typeof val === "number") {
+        const rounded = Math.round(val / 1000) * 1000;
+        state.formState.payment = rounded;
+        e.target.value = String(rounded).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+        validateField("payment");
+        checkFormValidity();
+      }
     });
 
     formPhone.addEventListener("input", (e) => {
@@ -990,7 +1004,7 @@ document.addEventListener("DOMContentLoaded", () => {
           isValid = true;
         } else {
           const pay = Number(state.formState.payment);
-          isValid = !isNaN(pay) && pay >= 1000 && pay <= 1000000;
+          isValid = !isNaN(pay) && pay >= 1000 && pay <= 5000000;
         }
         break;
       case "phone":
@@ -1030,7 +1044,7 @@ document.addEventListener("DOMContentLoaded", () => {
           silentValid = state.formState.isRemote || (state.formState.address.trim().length >= 5 && state.formState.address.trim().length <= 50);
           break;
         case "payment":
-          silentValid = state.formState.isNegotiable || (Number(state.formState.payment) >= 1000 && Number(state.formState.payment) <= 1000000);
+          silentValid = state.formState.isNegotiable || (Number(state.formState.payment) >= 1000 && Number(state.formState.payment) <= 5000000);
           break;
         case "phone":
           silentValid = state.formState.phone.length === 10;
