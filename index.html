@@ -8,6 +8,17 @@
   <!-- Supabase client SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
+  <!-- IMPORTANT: Initialize Supabase client IMMEDIATELY so it can parse
+       the #access_token hash from the OAuth redirect before any async code.
+       The anon key is public by design (safe to expose in frontend). -->
+  <script>
+    window.__BIRRET_SUPABASE = supabase.createClient(
+      'https://mkgsoamugnnbqgwgvinb.supabase.co',
+      'sb_publishable_EdhPumusQGDfkvpYwbwAJw_-zXV20Tr'
+    );
+    console.log('[Birret] Supabase client created early. Hash:', window.location.hash.substring(0, 40) || '(none)');
+  </script>
+
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,6 +27,7 @@
   <!-- CSS -->
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
   <!-- Offline status notification -->

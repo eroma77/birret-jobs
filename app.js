@@ -44,40 +44,36 @@ document.addEventListener("DOMContentLoaded", () => {
     // Set initial language from storage or default to Russian
     window.currentLanguage = localStorage.getItem("birret_lang") || "ru";
 
-    // 1. Load Supabase Config from backend dynamically
-    try {
-      const configRes = await fetch("/api/config");
-      const config = await configRes.json();
-      supabaseClient = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
-      
-      // Initialize Supabase Auth listener
+    // 1. Use the Supabase client that was created synchronously in <head>
+    //    This is critical: the client MUST exist before getSession() is called
+    //    so it can parse the #access_token hash from OAuth redirect.
+    if (window.__BIRRET_SUPABASE) {
+      supabaseClient = window.__BIRRET_SUPABASE;
+      console.log("[Birret] Using pre-initialized Supabase client.");
       initSupabaseAuth();
-    } catch (err) {
-      console.error("Failed to initialize Supabase:", err);
-      showToast("Ошибка подключения к серверу авторизации.", "error");
+    } else {
+      // Fallback: try fetching config from server (old path)
+      try {
+        const configRes = await fetch("/api/config");
+        const config = await configRes.json();
+        supabaseClient = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+        initSupabaseAuth();
+      } catch (err) {
+        console.error("Failed to initialize Supabase:", err);
+        showToast("Ошибка подключения к серверу авторизации.", "error");
+      }
     }
 
     loadFavorites();
-    
-    // Set up virtual keyboard detection
     initVirtualKeyboardDetection();
-
-    // Set up searchable dropdowns
     initDropdowns();
-
-    // Set up form dynamic behaviors
     initFormHandlers();
-
-    // Event listeners
     bindEvents();
-
-    // Set dynamic locale interface values
     applyLanguage(window.currentLanguage);
-
-    // Render initially
     showView("vacancies");
     loadJobsFromServer();
   }
+
 
   // --- BILINGUAL TRANSLATION ENGINE ---
   function applyLanguage(lang) {
@@ -142,15 +138,23 @@ document.addEventListener("DOMContentLoaded", () => {
     // 1. On page load — check for existing session OR OAuth redirect token in URL hash
     supabaseClient.auth.getSession().then(({ data: { session }, error }) => {
       if (error) console.error("getSession error:", error);
+      console.log("[Auth] getSession result:", session ? "session found" : "no session");
       handleAuthSession(session, null);
     });
 
     // 2. Listen to ALL auth state changes (login, logout, token refresh, OAuth redirect)
     supabaseClient.auth.onAuthStateChange((event, session) => {
-      console.log("[Auth] event:", event, session?.user?.email);
+      console.log("[Auth] onAuthStateChange event:", event, "| user:", session?.user?.email || "none");
       handleAuthSession(session, event);
+
+      // Clean up the #access_token hash from the address bar after OAuth redirect
+      if (event === "SIGNED_IN" && window.location.hash.includes("access_token")) {
+        window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+        console.log("[Auth] URL hash cleared after OAuth sign-in.");
+      }
     });
   }
+
 
   function handleAuthSession(session, event) {
     if (session && session.user) {
