@@ -2026,5 +2026,46 @@ body,
   background: rgba(0,0,0,0.6);
 }
 
+/* Dark Mode Dropdown & Input Contrast Fixes */
+[data-theme="dark"] .dropdown-menu {
+  background-color: #1e1e24;
+  border-color: #2a2a32;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.6);
+}
+[data-theme="dark"] .dropdown-search-wrapper {
+  border-bottom-color: #2a2a32;
+}
+[data-theme="dark"] .dropdown-search-input {
+  background-color: #121214;
+  border-color: #2a2a32;
+  color: #ffffff;
+}
+[data-theme="dark"] .dropdown-search-input:focus {
+  border-color: var(--color-primary);
+  background-color: #121214;
+}
+[data-theme="dark"] .dropdown-option {
+  color: #ffffff;
+}
+[data-theme="dark"] .dropdown-option:hover {
+  background-color: #2a2a32;
+  color: #ffffff;
+}
+[data-theme="dark"] .dropdown-option.selected {
+  background-color: rgba(99, 102, 241, 0.2);
+  color: #ffffff;
+}
+[data-theme="dark"] .dropdown-trigger:focus, 
+[data-theme="dark"] .dropdown-trigger.open {
+  background-color: var(--color-bg);
+}
+[data-theme="dark"] .form-input-text:focus,
+[data-theme="dark"] .form-textarea:focus {
+  background-color: var(--color-bg);
+}
+[data-theme="dark"] .skeleton-card {
+  background-color: var(--color-card);
+}
+
 
 

@@ -375,7 +375,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const modal = document.getElementById("authModal");
         if (modal) modal.classList.remove("active");
 
-        showToast(t("toastWelcome").replace("{name}", displayName), "success");
+        // Welcome toast disabled to prevent UX overlapping and overlapping with filter close button
+        // showToast(t("toastWelcome").replace("{name}", displayName), "success");
 
         // Execute any pending action that required auth
         if (state.authRedirect) {
