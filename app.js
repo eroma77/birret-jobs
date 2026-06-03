@@ -139,8 +139,6 @@ document.addEventListener("DOMContentLoaded", () => {
     window.__BIRRET_AUTH_HANDLER = function (event, session) {
       console.log("[Auth] Handling event:", event, "| user:", session?.user?.email || "none");
       handleAuthSession(session, event);
-
-      // Remove the #access_token hash from the address bar
       if (event === "SIGNED_IN" && window.location.hash.includes("access_token")) {
         window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
         console.log("[Auth] ✅ URL hash cleared.");
@@ -150,30 +148,67 @@ document.addEventListener("DOMContentLoaded", () => {
     // Drain any auth events that fired BEFORE app.js was ready (queued in <head>)
     const queue = window.__BIRRET_AUTH_QUEUE || [];
     if (queue.length > 0) {
-      console.log("[Auth] Draining", queue.length, "queued auth event(s) from early listener.");
+      console.log("[Auth] Draining", queue.length, "queued auth event(s).");
       queue.forEach(function ({ event, session }) {
         window.__BIRRET_AUTH_HANDLER(event, session);
       });
       window.__BIRRET_AUTH_QUEUE = [];
     }
 
-    // Fallback: explicitly call getSession() in case the hash was processed
-    // before onAuthStateChange was set up and no events were queued
+    // Fallback A: getSession() — SDK may have parsed the hash internally
     supabaseClient.auth.getSession().then(({ data: { session }, error }) => {
       if (error) {
-        console.error("[Auth] getSession error:", error);
-        return;
+        console.error("[Auth] getSession error:", error.message);
       }
-      console.log("[Auth] getSession fallback:", session ? "✅ session found → " + session.user.email : "❌ no session");
+      console.log("[Auth] getSession:", session ? "✅ " + session.user.email : "❌ no session");
       if (session && !state.user) {
-        // Session exists but we haven't processed it yet — handle it now
         handleAuthSession(session, "INITIAL_SESSION");
         if (window.location.hash.includes("access_token")) {
           window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
         }
+      } else if (!session && window.location.hash.includes("access_token")) {
+        // Fallback B: SDK didn't find session — manually parse hash and call setSession
+        console.warn("[Auth] SDK missed the hash — attempting manual setSession...");
+        tryManualHashAuth();
       }
     });
   }
+
+  // Last-resort: parse access_token + refresh_token from URL hash manually
+  async function tryManualHashAuth() {
+    try {
+      const hash = window.location.hash.substring(1); // remove leading #
+      const params = new URLSearchParams(hash);
+      const accessToken  = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+
+      if (!accessToken) {
+        console.warn("[Auth] No access_token in hash — nothing to do.");
+        return;
+      }
+
+      console.log("[Auth] Manual setSession with token from hash...");
+      const { data, error } = await supabaseClient.auth.setSession({
+        access_token:  accessToken,
+        refresh_token: refreshToken || ""
+      });
+
+      if (error) {
+        console.error("[Auth] Manual setSession failed:", error.message);
+        return;
+      }
+
+      if (data?.session) {
+        console.log("[Auth] ✅ Manual setSession succeeded:", data.session.user.email);
+        handleAuthSession(data.session, "SIGNED_IN");
+        window.history.replaceState(null, document.title, window.location.pathname + window.location.search);
+      }
+    } catch (e) {
+      console.error("[Auth] tryManualHashAuth exception:", e);
+    }
+  }
+
+
 
 
 
