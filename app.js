@@ -60,7 +60,7 @@ document.addEventListener("DOMContentLoaded", () => {
         initSupabaseAuth();
       } catch (err) {
         console.error("Failed to initialize Supabase:", err);
-        showToast("Ошибка подключения к серверу авторизации.", "error");
+        showToast(window.TRANSLATIONS[window.currentLanguage].toastAuthServerConnectError, "error");
       }
     }
 
@@ -72,6 +72,17 @@ document.addEventListener("DOMContentLoaded", () => {
     applyLanguage(window.currentLanguage);
     showView("vacancies");
     loadJobsFromServer();
+  }
+
+
+  function escapeHTML(str) {
+    if (!str) return "";
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 
 
@@ -358,6 +369,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!response.ok) throw new Error("Не удалось получить вакансии с сервера");
       
       state.jobs = await response.json();
+      localStorage.setItem("birret_jobs", JSON.stringify(state.jobs));
       applyFiltersAndRender(false);
     } catch (err) {
       console.error("Database connection error:", err);
@@ -1149,7 +1161,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     if (!isValid) {
-      showToast("В форме допущены ошибки!", "error");
+      showToast(window.TRANSLATIONS[window.currentLanguage].toastFormErrors, "error");
       return;
     }
 
@@ -1182,13 +1194,13 @@ document.addEventListener("DOMContentLoaded", () => {
   // PostgreSQL POST API Integration
   async function handlePublishVacancy() {
     if (!navigator.onLine) {
-      showToast("Соединение с интернетом отсутствует! Публикация невозможна.", "error");
+      showToast(window.TRANSLATIONS[window.currentLanguage].toastOffline, "error");
       return;
     }
 
     const publishBtn = document.getElementById("btnPreviewPublish");
     publishBtn.disabled = true;
-    publishBtn.textContent = "Публикация...";
+    publishBtn.textContent = window.currentLanguage === "kk" ? "Жариялануда..." : "Публикация...";
 
     const rawDesc = state.formState.description;
     const cleanDesc = rawDesc.replace(/<\/?[^>]+(>|$)/g, "");
@@ -1223,7 +1235,10 @@ document.addEventListener("DOMContentLoaded", () => {
         body: JSON.stringify(newJob)
       });
 
-      if (!response.ok) throw new Error("Сервер не смог сохранить вакансию");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Сервер не смог сохранить вакансию");
+      }
       
       const savedJob = await response.json();
 
@@ -1231,33 +1246,31 @@ document.addEventListener("DOMContentLoaded", () => {
       if (state.editingJobId) {
         const idx = state.jobs.findIndex(j => j.id === state.editingJobId);
         if (idx !== -1) state.jobs[idx] = savedJob;
-        showToast("Объявление успешно обновлено!", "success");
+        showToast(window.TRANSLATIONS[window.currentLanguage].toastJobUpdated, "success");
       } else {
         state.jobs.unshift(savedJob);
-        showToast("Вакансия успешно опубликована!", "success");
+        showToast(window.TRANSLATIONS[window.currentLanguage].toastJobCreated, "success");
       }
 
       state.isDirty = false;
       clearJobForm();
 
       publishBtn.disabled = false;
-      publishBtn.textContent = "Опубликовать";
+      publishBtn.textContent = window.TRANSLATIONS[window.currentLanguage].btnPublish;
 
       showView("vacancies");
       applyFiltersAndRender(false);
     } catch (err) {
       console.error(err);
-      showToast("Ошибка при публикации на сервере.", "error");
+      showToast(window.TRANSLATIONS[window.currentLanguage].toastPublishError, "error");
       publishBtn.disabled = false;
-      publishBtn.textContent = "Опубликовать";
+      publishBtn.textContent = window.TRANSLATIONS[window.currentLanguage].btnPublish;
     }
   }
 
   // PostgreSQL DELETE API Integration
   async function deleteMyJob(jobId) {
-    const confirmText = window.currentLanguage === "kk"
-      ? "Бұл хабарландыруды өшіргіңіз келе ме? Бұл әрекетті артқа қайтару мүмкін емес."
-      : "Вы действительно хотите удалить это объявление? Это действие нельзя отменить.";
+    const confirmText = window.TRANSLATIONS[window.currentLanguage].toastDeleteConfirm;
     if (confirm(confirmText)) {
       try {
         const session = supabaseClient ? (await supabaseClient.auth.getSession()).data.session : null;
@@ -1277,12 +1290,12 @@ document.addEventListener("DOMContentLoaded", () => {
         state.favorites = state.favorites.filter(id => id !== jobId);
         saveFavoritesToStorage();
 
-        showToast("Вакансия удалена.", "info");
+        showToast(window.TRANSLATIONS[window.currentLanguage].toastJobDeleted, "info");
         renderMyJobs();
         applyFiltersAndRender(false);
       } catch (err) {
         console.error(err);
-        showToast("Не удалось удалить вакансию. Попробуйте снова.", "error");
+        showToast(window.TRANSLATIONS[window.currentLanguage].toastDeleteError, "error");
       }
     }
   }
@@ -1337,7 +1350,7 @@ document.addEventListener("DOMContentLoaded", () => {
           renderFavorites();
         }
 
-        showToast("Не удалось синхронизировать список избранного с сервером.", "error");
+        showToast(window.TRANSLATIONS[window.currentLanguage].toastRollbackFav, "error");
       }
     }, 800);
   }
@@ -1509,7 +1522,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (myJobs.length === 0) {
       list.innerHTML = `
         <div class="empty-state" style="padding: 24px 16px;">
-          <p class="empty-state-desc">Вы еще не опубликовали ни одной вакансии.</p>
+          <p class="empty-state-desc" data-i18n="myJobsEmpty">${window.TRANSLATIONS[window.currentLanguage].myJobsEmpty}</p>
         </div>
       `;
       return;
@@ -1519,15 +1532,17 @@ document.addEventListener("DOMContentLoaded", () => {
       const item = document.createElement("div");
       item.className = "my-job-item";
       
-      const payLabel = job.isNegotiable ? "Договорная" : `${String(job.payment).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ₸`;
+      const payLabel = job.isNegotiable 
+        ? (window.currentLanguage === "kk" ? "Келісімді" : "Договорная")
+        : `${String(job.payment).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ₸`;
       const timeLabel = getJobDateLabel(job.createdAt);
 
       item.innerHTML = `
         <div class="my-job-info">
-          <span class="my-job-title">${job.profession}</span>
+          <span class="my-job-title">${escapeHTML(job.profession)}</span>
           <div class="my-job-meta">
             <span>${payLabel}</span>
-            <span>${job.city} (${timeLabel})</span>
+            <span>${escapeHTML(job.city)} (${timeLabel})</span>
           </div>
         </div>
         <div class="my-job-actions">
@@ -1560,11 +1575,11 @@ document.addEventListener("DOMContentLoaded", () => {
       : `${String(job.payment).replace(/\B(?=(\d{3})+(?!\d))/g, " ")} ₸`;
     const remoteLabel = job.isRemote 
       ? (window.currentLanguage === "kk" ? "Қашықтан" : "Удаленно") 
-      : job.city;
+      : escapeHTML(job.city);
     
     return `
       <div class="vacancy-card-header">
-        <span class="vacancy-profession">${job.profession}</span>
+        <span class="vacancy-profession">${escapeHTML(job.profession)}</span>
         ${!isPreview ? `
           <button class="vacancy-favorite-btn ${isFav ? 'active' : ''}" data-favorite-id="${job.id}">
             <svg fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1581,7 +1596,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <span class="badge">${window.currentLanguage === "kk" ? "Жынысы" : "Пол"}: ${translateGender(job.gender)}</span>
       </div>
 
-      <div class="vacancy-description">${job.description}</div>
+      <div class="vacancy-description">${escapeHTML(job.description).replace(/\n/g, "<br>")}</div>
 
       <div class="vacancy-meta">
         <div class="vacancy-meta-left">
@@ -1858,7 +1873,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("btnOpenCreateForm").addEventListener("click", () => {
       if (!state.user) {
-        document.getElementById("authModalText").textContent = "Войдите в систему, чтобы размещать новые объявления.";
+        document.getElementById("authModalText").textContent = window.TRANSLATIONS[window.currentLanguage].authModalFormDesc;
         document.getElementById("authModal").classList.add("active");
         state.authRedirect = { type: "publishForm" };
         return;
@@ -1868,7 +1883,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     document.getElementById("btnFormCancel").addEventListener("click", () => {
       if (state.isDirty) {
-        if (!confirm("Введенные данные не будут сохранены. Вы действительно хотите отменить?")) {
+        if (!confirm(window.TRANSLATIONS[window.currentLanguage].toastCancelConfirm)) {
           return;
         }
       }
@@ -1942,14 +1957,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
     window.addEventListener("online", () => {
       document.getElementById("offlineBanner").classList.remove("active");
-      showToast("Соединение с интернетом восстановлено!", "success");
+      showToast(window.TRANSLATIONS[window.currentLanguage].toastConnectionRestored, "success");
       const publishBtn = document.getElementById("btnPreviewPublish");
       if (publishBtn) publishBtn.disabled = false;
     });
 
     window.addEventListener("offline", () => {
       document.getElementById("offlineBanner").classList.add("active");
-      showToast("Соединение с интернетом потеряно!", "error");
+      showToast(window.TRANSLATIONS[window.currentLanguage].toastConnectionLost, "error");
     });
   }
 

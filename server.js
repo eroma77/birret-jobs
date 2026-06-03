@@ -46,7 +46,7 @@ app.use(express.static(__dirname));
 
 // Initialize Database Table if it doesn't exist
 async function initDb() {
-  const queryText = `
+  const createTableQuery = `
     CREATE TABLE IF NOT EXISTS jobs (
       id VARCHAR(50) PRIMARY KEY,
       profession VARCHAR(100) NOT NULL,
@@ -65,12 +65,14 @@ async function initDb() {
     );
   `;
   try {
-    const client = await pool.connect();
-    await client.query(queryText);
+    await pool.query(createTableQuery);
     console.log("Postgres Database 'jobs' table initialized successfully.");
-    client.release();
+    
+    // Enable Row Level Security to block any direct client-side PostgREST manipulations
+    await pool.query("ALTER TABLE jobs ENABLE ROW LEVEL SECURITY;");
+    console.log("Row Level Security (RLS) enabled on 'jobs' table.");
   } catch (err) {
-    console.error("Error initializing Database table:", err);
+    console.error("Error initializing Database table or enabling RLS:", err);
   }
 }
 
@@ -105,15 +107,11 @@ app.get('/api/config', (req, res) => {
 // 1. GET ALL JOBS (and execute 15-day expiration cleanup query)
 app.get('/api/jobs', async (req, res) => {
   try {
-    const client = await pool.connect();
-    
     // Automatic 15-day job hard delete cleanup logic
-    await client.query("DELETE FROM jobs WHERE created_at < NOW() - INTERVAL '15 days'");
+    await pool.query("DELETE FROM jobs WHERE created_at < NOW() - INTERVAL '15 days'");
 
     // Fetch active jobs sorted by created time descending
-    const result = await client.query("SELECT * FROM jobs ORDER BY created_at DESC");
-    client.release();
-
+    const result = await pool.query("SELECT * FROM jobs ORDER BY created_at DESC");
     const jobs = result.rows.map(mapRowToJob);
     res.json(jobs);
   } catch (err) {
@@ -130,6 +128,55 @@ app.post('/api/jobs', async (req, res) => {
   }
 
   const job = req.body;
+
+  // --- BACKEND-SIDE INPUT VALIDATION ---
+  if (!job || typeof job !== 'object') {
+    return res.status(400).json({ error: "Некорректный формат данных" });
+  }
+  if (!job.id || typeof job.id !== 'string' || job.id.length > 50) {
+    return res.status(400).json({ error: "Некорректный ID вакансии" });
+  }
+  if (!job.profession || typeof job.profession !== 'string' || job.profession.trim().length === 0 || job.profession.length > 100) {
+    return res.status(400).json({ error: "Некорректное название профессии" });
+  }
+  const allowedGenders = ["Мужской", "Женский", "Неважно"];
+  if (!allowedGenders.includes(job.gender)) {
+    return res.status(400).json({ error: "Некорректный пол" });
+  }
+  const ageFrom = Number(job.ageFrom);
+  const ageTo = Number(job.ageTo);
+  if (isNaN(ageFrom) || isNaN(ageTo) || ageFrom < 15 || ageTo > 50 || ageFrom > ageTo) {
+    return res.status(400).json({ error: "Некорректный возрастной диапазон (разрешено от 15 до 50 лет)" });
+  }
+  const desc = (job.description || "").trim();
+  if (desc.length < 20 || desc.length > 1000) {
+    return res.status(400).json({ error: "Описание должно быть от 20 до 1000 символов" });
+  }
+  if (/http:\/\/|https:\/\/|www\./gi.test(desc)) {
+    return res.status(400).json({ error: "Описание не должно содержать внешних ссылок" });
+  }
+  if (!job.city || typeof job.city !== 'string' || job.city.trim().length === 0 || job.city.length > 100) {
+    return res.status(400).json({ error: "Необходимо указать город" });
+  }
+  const isRemote = !!job.isRemote;
+  if (!isRemote) {
+    const address = (job.address || "").trim();
+    if (address.length < 5 || address.length > 255) {
+      return res.status(400).json({ error: "Адрес должен быть от 5 до 255 символов" });
+    }
+  }
+  const isNegotiable = !!job.isNegotiable;
+  if (!isNegotiable) {
+    const payment = Number(job.payment);
+    if (isNaN(payment) || payment < 1000 || payment > 1000000) {
+      return res.status(400).json({ error: "Оплата должна быть от 1 000 ₸ до 1 000 000 ₸" });
+    }
+  }
+  const phone = (job.phone || "").replace(/\D/g, "");
+  if (phone.length !== 10) {
+    return res.status(400).json({ error: "Некорректный номер телефона (должно быть 10 цифр)" });
+  }
+
   // Securely override the authorId with the verified token user ID
   job.authorId = user.id;
 
@@ -174,10 +221,7 @@ app.post('/api/jobs', async (req, res) => {
   ];
 
   try {
-    const client = await pool.connect();
-    const result = await client.query(queryText, values);
-    client.release();
-
+    const result = await pool.query(queryText, values);
     res.status(201).json(mapRowToJob(result.rows[0]));
   } catch (err) {
     console.error("POST /api/jobs database error:", err);
@@ -195,23 +239,17 @@ app.delete('/api/jobs/:id', async (req, res) => {
   const jobId = req.params.id;
   
   try {
-    const client = await pool.connect();
-    
     // Check if the job exists and verify ownership
-    const checkResult = await client.query("SELECT author_id FROM jobs WHERE id = $1", [jobId]);
+    const checkResult = await pool.query("SELECT author_id FROM jobs WHERE id = $1", [jobId]);
     if (checkResult.rows.length === 0) {
-      client.release();
       return res.status(404).json({ error: "Вакансия не найдена" });
     }
     
     if (checkResult.rows[0].author_id !== user.id) {
-      client.release();
       return res.status(403).json({ error: "У вас нет прав на удаление этого объявления" });
     }
 
-    const result = await client.query("DELETE FROM jobs WHERE id = $1 RETURNING *;", [jobId]);
-    client.release();
-
+    await pool.query("DELETE FROM jobs WHERE id = $1 RETURNING *;", [jobId]);
     res.json({ success: true, message: "Жұмыс сәтті өшірілді" });
   } catch (err) {
     console.error("DELETE /api/jobs database error:", err);
