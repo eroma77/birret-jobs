@@ -1493,7 +1493,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return payB - payA;
       });
     } else if (state.filters.sort === "alphabetical") {
-      result.sort((a, b) => a.profession.localeCompare(b.profession, "ru"));
+      result.sort((a, b) => a.profession.localeCompare(b.profession, window.currentLanguage));
     }
 
     return result;
@@ -1534,8 +1534,8 @@ document.addEventListener("DOMContentLoaded", () => {
           <svg class="empty-state-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
-          <h3 class="empty-state-title">Вакансии не найдены</h3>
-          <p class="empty-state-desc">Попробуйте изменить или сбросить настройки фильтра.</p>
+          <h3 class="empty-state-title" data-i18n="emptyFeedTitle">${window.TRANSLATIONS[window.currentLanguage].emptyFeedTitle}</h3>
+          <p class="empty-state-desc" data-i18n="emptyFeedDesc">${window.TRANSLATIONS[window.currentLanguage].emptyFeedDesc}</p>
         </div>
       `;
       return;
@@ -1572,8 +1572,8 @@ document.addEventListener("DOMContentLoaded", () => {
           <svg class="empty-state-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
           </svg>
-          <h3 class="empty-state-title">Список избранного пуст</h3>
-          <p class="empty-state-desc">Нажмите на иконку сердечка на карточке вакансии, чтобы сохранить её сюда.</p>
+          <h3 class="empty-state-title" data-i18n="favEmptyTitle">${window.TRANSLATIONS[window.currentLanguage].favEmptyTitle}</h3>
+          <p class="empty-state-desc" data-i18n="favEmptyDesc">${window.TRANSLATIONS[window.currentLanguage].favEmptyDesc}</p>
         </div>
       `;
       return;
@@ -1732,7 +1732,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function generateWhatsAppLink(phoneNum, professionName) {
     const cleanPhone = "7" + phoneNum.replace(/\D/g, "");
-    const message = `Здравствуйте, я пишу по поводу вакансии "${professionName}" на вашем сайте.`;
+    const message = window.currentLanguage === "kk"
+      ? `Сәлеметсіз бе, мен сіздің сайтыңыздағы "${professionName}" бос жұмыс орны бойынша жазып тұрмын.`
+      : `Здравствуйте, я пишу по поводу вакансии "${professionName}" на вашем сайте.`;
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
   }
 
@@ -1903,9 +1905,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- EVENT BINDINGS ---
   function bindEvents() {
-    document.getElementById("navVacancies").addEventListener("click", () => showView("vacancies"));
-    document.getElementById("navFavorites").addEventListener("click", () => showView("favorites"));
-    document.getElementById("navCabinet").addEventListener("click", () => showView("cabinet"));
+    const handleNavClick = (viewName) => {
+      if (state.isDirty) {
+        if (!confirm(window.TRANSLATIONS[window.currentLanguage].toastCancelConfirm)) {
+          return;
+        }
+      }
+      state.isDirty = false;
+      showView(viewName);
+    };
+
+    document.getElementById("navVacancies").addEventListener("click", () => handleNavClick("vacancies"));
+    document.getElementById("navFavorites").addEventListener("click", () => handleNavClick("favorites"));
+    document.getElementById("navCabinet").addEventListener("click", () => handleNavClick("cabinet"));
 
     const filterPanel = document.getElementById("filterPanel");
     const filterBackdrop = document.getElementById("filterBackdrop");

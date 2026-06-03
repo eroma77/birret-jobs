@@ -1003,11 +1003,12 @@ input:checked + .switch-slider:before {
   z-index: 200;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--transition-fast);
-  padding: 16px;
+  padding: 24px 16px;
+  overflow-y: auto;
 }
 
 .modal-container.active {
@@ -1016,6 +1017,7 @@ input:checked + .switch-slider:before {
 }
 
 .modal-content {
+  margin: auto;
   background: var(--color-card);
   border-radius: var(--radius-xl);
   padding: 32px 24px;
