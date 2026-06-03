@@ -99,6 +99,14 @@ async function initDb() {
     // Non-fatal: RLS may already be enabled, or the pooler user lacks ALTER permissions
     console.warn("RLS enablement skipped (may already be active):", err.message);
   }
+
+  // Run 15-day data cleanup on startup to remove expired jobs immediately
+  try {
+    const cleanupResult = await pool.query("DELETE FROM jobs WHERE created_at < NOW() - INTERVAL '15 days'");
+    console.log(`Startup database cleanup executed. Expired records deleted.`);
+  } catch (err) {
+    console.error("Error executing startup database cleanup:", err);
+  }
 }
 
 // Database mapper helpers
@@ -160,6 +168,19 @@ app.post('/api/jobs', async (req, res) => {
   }
   if (!job.id || typeof job.id !== 'string' || job.id.length > 50) {
     return res.status(400).json({ error: "Некорректный ID вакансии" });
+  }
+
+  // Securely verify that the requesting user is the original author if editing an existing vacancy
+  try {
+    const existingJob = await pool.query("SELECT author_id FROM jobs WHERE id = $1", [job.id]);
+    if (existingJob.rows.length > 0) {
+      if (existingJob.rows[0].author_id !== user.id) {
+        return res.status(403).json({ error: "У вас нет прав на редактирование этого объявления" });
+      }
+    }
+  } catch (err) {
+    console.error("Error verifying job ownership before upsert:", err);
+    return res.status(500).json({ error: "Ошибка базы данных при проверке прав владельца" });
   }
   if (!job.profession || typeof job.profession !== 'string' || job.profession.trim().length === 0 || job.profession.length > 100) {
     return res.status(400).json({ error: "Некорректное название профессии" });

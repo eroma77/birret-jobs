@@ -56,13 +56,15 @@
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&subset=cyrillic,cyrillic-ext&display=swap" rel="stylesheet">
   
   <!-- CSS -->
   <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
+  <!-- Force browser to load cyrillic-ext subset of Montserrat font -->
+  <div style="display:none; font-family: 'Montserrat';">әіңғүұқөһӘІҢҒҮҰҚӨҺ</div>
 
   <!-- Offline status notification -->
   <div id="offlineBanner" class="offline-banner">
@@ -144,7 +146,15 @@
               <span id="profileEmail" class="profile-email">askar.aliev@gmail.com</span>
             </div>
           </div>
-          <button id="btnLogout" class="btn-logout" data-i18n="profileLogout">Выйти</button>
+          <div class="profile-actions-wrapper">
+            <button id="btnLogout" class="btn-logout" data-i18n="profileLogout">Выйти</button>
+            <a href="https://wa.me/77754737619" target="_blank" class="btn-contact-author">
+              <svg viewBox="0 0 24 24" fill="currentColor" style="width: 14px; height: 14px; flex-shrink: 0;">
+                <path d="M12.012 2c-5.506 0-9.989 4.478-9.989 9.984a9.96 9.96 0 001.37 5.028L2 22l5.13-1.346a9.928 9.928 0 004.877 1.277h.005c5.505 0 9.989-4.478 9.99-9.985A9.972 9.972 0 0012.012 2zm5.72 13.917c-.246.696-1.423 1.269-1.95 1.34-.486.066-.994.095-2.203-.393a8.946 8.946 0 01-3.69-2.43 9.773 9.773 0 01-1.89-2.732c-.39-.68-.135-1.04.167-1.36.223-.238.486-.532.658-.77.165-.246.216-.402.324-.67.108-.268.043-.512-.02-.67-.066-.16-.583-1.4-.803-1.925-.213-.514-.452-.455-.62-.464-.15-.008-.323-.008-.495-.008a.952.952 0 00-.687.323c-.237.26-.902.883-.902 2.15 0 1.268.923 2.493 1.053 2.671.13.178 1.817 2.776 4.4 3.887.615.264 1.094.42 1.468.54.618.196 1.18.17 1.626.104.498-.074 1.53-.624 1.745-1.229.215-.604.215-1.12.15-1.229-.064-.11-.237-.17-.487-.294z"/>
+              </svg>
+              <span data-i18n="btnContactAuthor">Связаться с автором</span>
+            </a>
+          </div>
         </div>
 
         <!-- Dashboard view -->

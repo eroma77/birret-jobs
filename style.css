@@ -1176,6 +1176,35 @@ input:checked + .switch-slider:before {
   background: rgba(239, 68, 68, 0.05);
 }
 
+.profile-actions-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.btn-contact-author {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background-color: rgba(16, 185, 129, 0.08);
+  color: var(--color-accent);
+  border: 1px solid rgba(16, 185, 129, 0.15);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: var(--transition-fast);
+  text-decoration: none;
+}
+
+.btn-contact-author:hover {
+  background-color: rgba(16, 185, 129, 0.15);
+  color: var(--color-accent-hover);
+}
+
 /* Post Vacancy Form */
 .form-card {
   background-color: var(--color-card);

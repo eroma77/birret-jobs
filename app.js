@@ -85,6 +85,24 @@ document.addEventListener("DOMContentLoaded", () => {
       .replace(/'/g, "&#039;");
   }
 
+  function formatDescriptionHTML(text) {
+    if (!text) return "";
+    let html = escapeHTML(text);
+    
+    // Support markdown bold: **text** or __text__ -> <strong>text</strong>
+    html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/__(.*?)__/g, "<strong>$1</strong>");
+    
+    // Support markdown italic: *text* or _text_ -> <em>text</em>
+    html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
+    html = html.replace(/_(.*?)_/g, "<em>$1</em>");
+    
+    // Preserve lists and newlines
+    html = html.replace(/\n/g, "<br>");
+    
+    return html;
+  }
+
 
   // --- BILINGUAL TRANSLATION ENGINE ---
   function applyLanguage(lang) {
@@ -851,7 +869,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     formAddress.addEventListener("input", (e) => {
       const rawVal = e.target.value;
-      const cleanVal = rawVal.replace(/[^a-zA-Zа-яА-ЯёЁ0-9\s.,№-]/g, "");
+      const cleanVal = rawVal.replace(/[^a-zA-Zа-яА-ЯёЁәіңғүұқөһӘІҢҒҮҰҚӨҺ0-9\s.,№-]/g, "");
       if (rawVal !== cleanVal) {
         e.target.value = cleanVal;
       }
@@ -936,6 +954,46 @@ document.addEventListener("DOMContentLoaded", () => {
       e.target.value = formatted;
       validateField("phone");
       checkFormValidity();
+    });
+
+    // Explicit paste event listeners to force immediate validation and UI update on paste (Ctrl+V or long-tap)
+    const triggerInputEvent = (element) => {
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+    };
+
+    formDescription.addEventListener("paste", () => {
+      setTimeout(() => {
+        const text = formDescription.value;
+        document.getElementById("descCharCount").textContent = text.length;
+        state.formState.description = text;
+        state.isDirty = true;
+        validateField("description");
+        checkFormValidity();
+      }, 50);
+    });
+
+    formAddress.addEventListener("paste", () => {
+      setTimeout(() => {
+        const rawVal = formAddress.value;
+        const cleanVal = rawVal.replace(/[^a-zA-Zа-яА-ЯёЁәіңғүұқөһӘІҢҒҮҰҚӨҺ0-9\s.,№-]/g, "");
+        formAddress.value = cleanVal;
+        state.formState.address = cleanVal;
+        state.isDirty = true;
+        validateField("address");
+        checkFormValidity();
+      }, 50);
+    });
+
+    formPhone.addEventListener("paste", () => {
+      setTimeout(() => {
+        triggerInputEvent(formPhone);
+      }, 50);
+    });
+
+    formPayment.addEventListener("paste", () => {
+      setTimeout(() => {
+        triggerInputEvent(formPayment);
+      }, 50);
     });
 
     const genderRadios = document.getElementsByName("requiredGender");
@@ -1247,7 +1305,9 @@ document.addEventListener("DOMContentLoaded", () => {
       payment: state.formState.isNegotiable ? 0 : Number(state.formState.payment),
       isNegotiable: state.formState.isNegotiable,
       phone: state.formState.phone,
-      createdAt: new Date().toISOString(),
+      createdAt: state.editingJobId
+        ? (state.jobs.find(j => j.id === state.editingJobId)?.createdAt || new Date().toISOString())
+        : new Date().toISOString(),
       authorId: state.user.id
     };
 
@@ -1625,7 +1685,7 @@ document.addEventListener("DOMContentLoaded", () => {
         <span class="badge">${window.currentLanguage === "kk" ? "Жынысы" : "Пол"}: ${translateGender(job.gender)}</span>
       </div>
 
-      <div class="vacancy-description">${escapeHTML(job.description).replace(/\n/g, "<br>")}</div>
+      <div class="vacancy-description">${formatDescriptionHTML(job.description)}</div>
 
       <div class="vacancy-meta">
         <div class="vacancy-meta-left">
@@ -1714,7 +1774,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <span class="badge">${window.currentLanguage === "kk" ? "Жынысы" : "Пол"}: ${translateGender(job.gender)}</span>
     `;
 
-    document.getElementById("detailDescription").textContent = job.description;
+    document.getElementById("detailDescription").innerHTML = formatDescriptionHTML(job.description);
     
     const remoteLabel = job.isRemote 
       ? (window.currentLanguage === "kk" ? "Қашықтан жұмыс" : "Удаленная работа") 
