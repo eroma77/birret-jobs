@@ -86,7 +86,8 @@ document.addEventListener("DOMContentLoaded", () => {
     
     const langBtn = document.getElementById("btnLangToggle");
     if (langBtn) {
-      langBtn.textContent = lang.toUpperCase();
+      // Show "KZ" for Kazakh (kk), "RU" for Russian - user-friendly labels
+      langBtn.textContent = lang === "kk" ? "KZ" : "RU";
     }
     
     document.documentElement.lang = lang;
