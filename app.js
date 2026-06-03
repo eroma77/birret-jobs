@@ -164,82 +164,39 @@ document.addEventListener("DOMContentLoaded", () => {
     updateAuthUI();
   }
 
-  async function handleAuthSubmit(e) {
-    e.preventDefault();
+  // --- GOOGLE OAUTH AUTHENTICATION ---
+  async function handleGoogleSignIn() {
+    if (!supabaseClient) {
+      showToast(window.currentLanguage === "kk" ? "Сервермен байланыс жоқ. Қайталаңыз." : "Сервер недоступен. Попробуйте позже.", "error");
+      return;
+    }
     if (!navigator.onLine) {
-      showToast(window.currentLanguage === "kk" ? "Интернет байланысы жоқ! Әрекет мүмкін емес." : "Соединение с интернетом отсутствует! Действие невозможно.", "error");
+      showToast(window.currentLanguage === "kk" ? "Интернет байланысы жоқ! Әрекет мүмкін емес." : "Отсутствие интернета! Действие невозможно.", "error");
       return;
     }
 
-    const email = document.getElementById("authEmail").value.trim();
-    const password = document.getElementById("authPassword").value;
-    const submitBtn = document.getElementById("btnAuthSubmit");
-
-    submitBtn.disabled = true;
-    submitBtn.style.opacity = "0.7";
-    
-    try {
-      if (state.authMode === "signin") {
-        const { data, error } = await supabaseClient.auth.signInWithPassword({
-          email: email,
-          password: password
-        });
-        if (error) throw error;
-        
-        showToast(window.currentLanguage === "kk" ? "Жүйеге сәтті кірдіңіз!" : "Вы успешно вошли в систему!", "success");
-        document.getElementById("authModal").classList.remove("active");
-        
-        if (state.authRedirect) {
-          const redirect = state.authRedirect;
-          state.authRedirect = null;
-          setTimeout(() => {
-            executeRedirectAction(redirect);
-          }, 300);
-        }
-      } else {
-        const { data, error } = await supabaseClient.auth.signUp({
-          email: email,
-          password: password
-        });
-        if (error) throw error;
-        
-        if (data.session) {
-          showToast(window.currentLanguage === "kk" ? "Тіркелу сәтті аяқталды!" : "Регистрация прошла успешно!", "success");
-        } else {
-          showToast(window.currentLanguage === "kk" ? "Тіркелуді растау үшін поштаңызды тексеріңіз!" : "Проверьте почту для подтверждения регистрации!", "info");
-        }
-        document.getElementById("authModal").classList.remove("active");
-      }
-    } catch (err) {
-      console.error("Auth error:", err);
-      showToast((window.currentLanguage === "kk" ? "Авторизация қатесі: " : "Ошибка авторизации: ") + err.message, "error");
-    } finally {
-      submitBtn.disabled = false;
-      submitBtn.style.opacity = "1";
+    const btn = document.getElementById("btnGoogleSignIn");
+    if (btn) {
+      btn.disabled = true;
+      btn.style.opacity = "0.7";
     }
-  }
 
-  function toggleAuthMode(e) {
-    if (e) e.preventDefault();
-    
-    const submitText = document.getElementById("authSubmitText");
-    const toggleLink = document.getElementById("authToggleLink");
-    const modalTitle = document.querySelector("#authModal .modal-title");
-    
-    if (state.authMode === "signin") {
-      state.authMode = "signup";
-      submitText.textContent = window.currentLanguage === "kk" ? "Тіркелу" : "Зарегистрироваться";
-      submitText.setAttribute("data-i18n", "btnSignUp");
-      toggleLink.textContent = window.currentLanguage === "kk" ? "Аккаунтыңыз бар ма? Кіру" : "Уже есть аккаунт? Войти";
-      toggleLink.setAttribute("data-i18n", "btnSwitchToSignIn");
-      modalTitle.textContent = window.currentLanguage === "kk" ? "Тіркелу" : "Регистрация";
-    } else {
-      state.authMode = "signin";
-      submitText.textContent = window.currentLanguage === "kk" ? "Кіру" : "Войти";
-      submitText.setAttribute("data-i18n", "btnSignIn");
-      toggleLink.textContent = window.currentLanguage === "kk" ? "Тіркелмегенсіз бе? Тіркелу" : "Нет аккаунта? Зарегистрироваться";
-      toggleLink.setAttribute("data-i18n", "btnSwitchToSignUp");
-      modalTitle.textContent = window.currentLanguage === "kk" ? "Тіркелу қажет" : "Требуется авторизация";
+    try {
+      const { error } = await supabaseClient.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
+      // Browser will redirect to Google — no further action needed here
+    } catch (err) {
+      console.error("Google OAuth error:", err);
+      showToast(
+        (window.currentLanguage === "kk" ? "Google арқылы кіру қатесі: " : "Ошибка входа через Google: ") + err.message,
+        "error"
+      );
+      if (btn) { btn.disabled = false; btn.style.opacity = "1"; }
     }
   }
 
@@ -1792,7 +1749,7 @@ document.addEventListener("DOMContentLoaded", () => {
       closeFilter();
       applyFiltersAndRender();
       renderActiveFilterTags();
-      showToast("Фильтры сброшены.", "info");
+      showToast(window.currentLanguage === "kk" ? "Сүзгілер тазаланды." : "Фильтры сброшены.", "info");
     });
 
     document.getElementById("btnOpenCreateForm").addEventListener("click", () => {
@@ -1833,21 +1790,15 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // Auth Form Events
-    const authForm = document.getElementById("authForm");
-    if (authForm) {
-      authForm.addEventListener("submit", handleAuthSubmit);
+    // Google OAuth Button
+    const googleBtn = document.getElementById("btnGoogleSignIn");
+    if (googleBtn) {
+      googleBtn.addEventListener("click", handleGoogleSignIn);
     }
 
-    const authToggleLink = document.getElementById("authToggleLink");
-    if (authToggleLink) {
-      authToggleLink.addEventListener("click", toggleAuthMode);
-    }
-
+    // Also attach Google sign-in to cabinet guest button
     document.querySelectorAll(".btn-auth-trigger").forEach(btn => {
       btn.addEventListener("click", () => {
-        state.authMode = "signup"; // Automatically switches to signin upon toggleAuthMode evaluation
-        toggleAuthMode();
         document.getElementById("authModal").classList.add("active");
       });
     });

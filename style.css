@@ -1611,3 +1611,37 @@ input:checked + .switch-slider:before {
   color: var(--color-primary-hover) !important;
   text-decoration: underline !important;
 }
+
+/* Google OAuth Button */
+.btn-google-auth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 20px;
+  background: #ffffff;
+  color: #3c4043;
+  border: 1.5px solid #dadce0;
+  border-radius: var(--radius-md);
+  font-family: var(--font-primary);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  transition: box-shadow var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+  letter-spacing: 0.01em;
+}
+.btn-google-auth:hover {
+  background: #f8f9fa;
+  border-color: #c6c6c6;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.12), 0 1px 3px rgba(0,0,0,0.06);
+}
+.btn-google-auth:active {
+  background: #f1f3f4;
+  box-shadow: none;
+}
+.btn-google-auth:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
