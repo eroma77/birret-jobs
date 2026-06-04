@@ -91,7 +91,7 @@ document.addEventListener("DOMContentLoaded", () => {
     window.currentLanguage = "ru";
 
     // Apply saved theme (Dark Mode)
-    const savedTheme = localStorage.getItem("birret_theme") || "light";
+    const savedTheme = localStorage.getItem("tabysqz_theme") || "light";
     if (savedTheme === "dark") {
       document.documentElement.setAttribute("data-theme", "dark");
       const sun = document.getElementById("iconSun");
@@ -101,10 +101,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Wait for Supabase config fetch to finish (resolving race condition)
-    if (window.__BIRRET_CONFIG_PROMISE) {
+    if (window.__TABYSQZ_CONFIG_PROMISE) {
       try {
-        supabaseClient = await window.__BIRRET_CONFIG_PROMISE;
-        console.log("[Birret] Supabase client initialized via early config promise.");
+        supabaseClient = await window.__TABYSQZ_CONFIG_PROMISE;
+        console.log("[TabysQz] Supabase client initialized via early config promise.");
         initSupabaseAuth();
       } catch (err) {
         console.error("Failed to initialize Supabase via promise:", err);
@@ -122,7 +122,7 @@ document.addEventListener("DOMContentLoaded", () => {
             autoRefreshToken: true
           }
         });
-        console.log("[Birret] Supabase client initialized via fallback config fetch.");
+        console.log("[TabysQz] Supabase client initialized via fallback config fetch.");
         initSupabaseAuth();
       } catch (err) {
         console.error("Failed to initialize Supabase:", err);
@@ -264,7 +264,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!supabaseClient) return;
 
     // Register the auth handler so future onAuthStateChange events call it directly
-    window.__BIRRET_AUTH_HANDLER = function (event, session) {
+    window.__TABYSQZ_AUTH_HANDLER = function (event, session) {
       console.log("[Auth] Handling event:", event, "| user:", session?.user?.email || "none");
       handleAuthSession(session, event);
       if (event === "SIGNED_IN" && window.location.hash.includes("access_token")) {
@@ -274,21 +274,21 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     // If supabaseClient is a duplicate client, subscribe it to auth state changes
-    if (supabaseClient !== window.__BIRRET_SUPABASE) {
+    if (supabaseClient !== window.__TABYSQZ_SUPABASE) {
       console.log("[Auth] Subscribing new Supabase client instance to onAuthStateChange.");
       supabaseClient.auth.onAuthStateChange((event, session) => {
-        window.__BIRRET_AUTH_HANDLER(event, session);
+        window.__TABYSQZ_AUTH_HANDLER(event, session);
       });
     }
 
     // Drain any auth events that fired BEFORE app.js was ready (queued in <head>)
-    const queue = window.__BIRRET_AUTH_QUEUE || [];
+    const queue = window.__TABYSQZ_AUTH_QUEUE || [];
     if (queue.length > 0) {
       console.log("[Auth] Draining", queue.length, "queued auth event(s).");
       queue.forEach(function ({ event, session }) {
-        window.__BIRRET_AUTH_HANDLER(event, session);
+        window.__TABYSQZ_AUTH_HANDLER(event, session);
       });
-      window.__BIRRET_AUTH_QUEUE = [];
+      window.__TABYSQZ_AUTH_QUEUE = [];
     }
 
     // Fallback A: getSession() — SDK may have parsed the hash internally
@@ -497,13 +497,13 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!response.ok) throw new Error("server_error");
       
       state.jobs = await response.json();
-      localStorage.setItem("birret_jobs", JSON.stringify(state.jobs));
+      localStorage.setItem("tabysqz_jobs", JSON.stringify(state.jobs));
       applyFiltersAndRender(false);
     } catch (err) {
       console.error("Database connection error:", err);
       showToast(t("toastDbError"), "error");
       
-      const savedJobs = localStorage.getItem("birret_jobs");
+      const savedJobs = localStorage.getItem("tabysqz_jobs");
       if (savedJobs) {
         state.jobs = JSON.parse(savedJobs);
       } else {
@@ -514,7 +514,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function loadFavorites() {
-    const savedFavs = localStorage.getItem("birret_favorites");
+    const savedFavs = localStorage.getItem("tabysqz_favorites");
     if (savedFavs) {
       state.favorites = JSON.parse(savedFavs);
     } else {
@@ -523,7 +523,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function saveFavoritesToStorage() {
-    localStorage.setItem("birret_favorites", JSON.stringify(state.favorites));
+    localStorage.setItem("tabysqz_favorites", JSON.stringify(state.favorites));
   }
 
   // --- VIRTUAL KEYBOARD DETECTION (MOBILE PORTRAIT ONLY) ---
@@ -2411,12 +2411,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const isDark = document.documentElement.getAttribute("data-theme") === "dark";
         if (isDark) {
           document.documentElement.removeAttribute("data-theme");
-          localStorage.setItem("birret_theme", "light");
+          localStorage.setItem("tabysqz_theme", "light");
           document.getElementById("iconSun").classList.add("hidden");
           document.getElementById("iconMoon").classList.remove("hidden");
         } else {
           document.documentElement.setAttribute("data-theme", "dark");
-          localStorage.setItem("birret_theme", "dark");
+          localStorage.setItem("tabysqz_theme", "dark");
           document.getElementById("iconSun").classList.remove("hidden");
           document.getElementById("iconMoon").classList.add("hidden");
         }

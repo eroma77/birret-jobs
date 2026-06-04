@@ -3,47 +3,57 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BirRet — Платформа разовых работ</title>
+  <title>TabysQz — Поиск работы и быстрых подработок в Казахстане</title>
+  <meta name="description" content="TabysQz — удобная платформа для поиска постоянной работы и быстрых подработок в Казахстане напрямую через WhatsApp. Находите исполнителей и работу без посредников.">
   
+  <!-- Favicons -->
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  
+  <!-- Google Search Console verification -->
+  <!-- <meta name="google-site-verification" content="" /> -->
+
   <!-- Supabase client SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
   <!--
-    CRITICAL: Supabase client is initialized via a dynamic configuration fetch window.__BIRRET_CONFIG_PROMISE.
+    CRITICAL: Supabase client is initialized via a dynamic configuration fetch window.__TABYSQZ_CONFIG_PROMISE.
     This resolves the initialization race condition with app.js while avoiding credentials leakage.
   -->
   <script>
     (function () {
-      window.__BIRRET_SUPABASE = null;
-      window.__BIRRET_AUTH_QUEUE = [];
-      window.__BIRRET_AUTH_HANDLER = null; // will be set by initSupabaseAuth()
+      window.__TABYSQZ_SUPABASE = null;
+      window.__TABYSQZ_AUTH_QUEUE = [];
+      window.__TABYSQZ_AUTH_HANDLER = null; // will be set by initSupabaseAuth()
 
       // Fetch config dynamically from backend and expose the promise
-      window.__BIRRET_CONFIG_PROMISE = fetch('/api/config')
+      window.__TABYSQZ_CONFIG_PROMISE = fetch('/api/config')
         .then(function (res) {
           if (!res.ok) throw new Error('Config request failed');
           return res.json();
         })
         .then(function (config) {
-          window.__BIRRET_SUPABASE = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
+          window.__TABYSQZ_SUPABASE = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
             auth: {
               detectSessionInUrl: true,
               persistSession: true,
               autoRefreshToken: true
             }
           });
-          console.log('[Birret Early] ✅ Supabase client initialized dynamically.');
+          console.log('[TabysQz Early] ✅ Supabase client initialized dynamically.');
 
           // Listen to auth state transitions
-          window.__BIRRET_SUPABASE.auth.onAuthStateChange(function (event, session) {
-            console.log('[Birret Early] auth event:', event, session ? session.user.email : 'no session');
-            if (typeof window.__BIRRET_AUTH_HANDLER === 'function') {
-              window.__BIRRET_AUTH_HANDLER(event, session);
+          window.__TABYSQZ_SUPABASE.auth.onAuthStateChange(function (event, session) {
+            console.log('[TabysQz Early] auth event:', event, session ? session.user.email : 'no session');
+            if (typeof window.__TABYSQZ_AUTH_HANDLER === 'function') {
+              window.__TABYSQZ_AUTH_HANDLER(event, session);
             } else {
-              window.__BIRRET_AUTH_QUEUE.push({ event: event, session: session });
+              window.__TABYSQZ_AUTH_QUEUE.push({ event: event, session: session });
             }
           });
-          return window.__BIRRET_SUPABASE;
+          return window.__TABYSQZ_SUPABASE;
         });
     })();
   </script>
@@ -84,8 +94,10 @@
   <!-- Header -->
   <header class="header">
     <div class="container header-inner">
-      <!-- Logo placeholder (name TBD) -->
-      <div class="header-spacer"></div>
+      <!-- Logo -->
+      <div class="logo">
+        TabysQz<span class="logo-badge">Qz</span>
+      </div>
       <div class="header-actions">
         <!-- Dark Mode Toggle -->
         <button id="btnDarkMode" class="btn-icon-header" aria-label="Переключить тему" title="Переключить тему">
